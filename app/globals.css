@@ -1,26 +1,128 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050b10;
+  --foreground: #f3f7f8;
+  --font-sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", "SF Mono", Consolas, monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  height: 100%;
 }
 
 body {
+  min-height: 100%;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+a,
+button {
+  cursor: pointer;
+  color: inherit;
+}
+
+img {
+  display: block;
+}
+
+::selection {
+  background: rgba(141, 228, 209, 0.35);
+  color: #f8fffd;
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025)),
+    rgba(6, 16, 24, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 40px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(28px);
+}
+
+.panel::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06),
+    transparent 25%,
+    transparent 70%,
+    rgba(255, 255, 255, 0.03)
+  );
+}
+
+.terminal-grid::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-image:
+    linear-gradient(rgba(122, 158, 176, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 158, 176, 0.12) 1px, transparent 1px),
+    radial-gradient(circle at 18% 18%, rgba(74, 222, 191, 0.2), transparent 28%),
+    radial-gradient(circle at 82% 68%, rgba(245, 178, 74, 0.14), transparent 24%);
+  background-position: center;
+  background-size:
+    100% 100%,
+    100% 100%,
+    auto,
+    auto;
+  opacity: 0.58;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95), transparent 96%);
+}
+
+.eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(170, 194, 208, 0.82);
+}
+
+.metric-chip {
+  display: flex;
+  min-height: 4.85rem;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0.85rem 0.9rem;
+}
+
+.metric-value {
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #f8fbfc;
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(170, 194, 208, 0.72);
 }

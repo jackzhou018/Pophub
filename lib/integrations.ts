@@ -1,5 +1,7 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
+import { decrypt, encrypt } from "@/lib/security";
+import { execute, queryAll } from "@/lib/db";
 
 export type ProviderId = "spotify" | "youtube" | "twitch";
 
@@ -7,6 +9,11 @@ export type AvailableService = {
   id: ProviderId;
   name: string;
   configured: boolean;
+};
+
+type ProviderIdentity = {
+  accountId: string;
+  displayName: string;
 };
 
 type ProviderConfig = {
@@ -21,7 +28,7 @@ type ProviderConfig = {
     origin: string;
   }) => Promise<StoredConnection>;
   refresh: (connection: StoredConnection) => Promise<StoredConnection>;
-  verify: (connection: StoredConnection) => Promise<boolean>;
+  verify: (connection: StoredConnection) => Promise<ProviderIdentity | null>;
 };
 
 export type SpotifyTopArtist = {
@@ -36,18 +43,66 @@ export type SpotifyTopArtistsResult = {
   error: string | null;
 };
 
+export type YoutubeTopVideo = {
+  id: string;
+  title: string;
+  channelTitle: string;
+  imageUrl: string | null;
+  url: string;
+  viewCount: number | null;
+};
+
+export type YoutubeTopChannel = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  url: string;
+  subscriberCount: number | null;
+};
+
+export type YoutubeHighlightsResult = {
+  videos: YoutubeTopVideo[];
+  channels: YoutubeTopChannel[];
+  error: string | null;
+};
+
+export type TwitchTopStream = {
+  id: string;
+  broadcasterName: string;
+  title: string;
+  imageUrl: string;
+  url: string;
+  viewerCount: number;
+  gameName: string | null;
+};
+
+export type TwitchTopStreamsResult = {
+  streams: TwitchTopStream[];
+  error: string | null;
+};
+
 export type StoredConnection = {
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
   connectedAt: string;
+  providerAccountId?: string;
+  providerAccountLabel?: string;
 };
 
 type StoredConnections = Partial<Record<ProviderId, StoredConnection>>;
 
-const STATE_COOKIE_PREFIX = "pophub_oauth_state_";
-const CONNECTION_COOKIE_PREFIX = "pophub_connection_";
+type ConnectionRow = {
+  provider: ProviderId;
+  access_token: string;
+  refresh_token: string | null;
+  expires_at: number;
+  connected_at: string;
+  provider_account_id: string | null;
+  provider_account_label: string | null;
+};
 
+const STATE_COOKIE_PREFIX = "pophub_oauth_state_";
 const secureCookies = process.env.NODE_ENV === "production";
 
 const providerDefinitions = {
@@ -78,61 +133,56 @@ function hasProviderCredentials(provider: ProviderId) {
   );
 }
 
-function requireSessionSecret() {
-  const secret = process.env.POPHUB_SESSION_SECRET;
-
-  if (!secret) {
-    throw new Error("Missing POPHUB_SESSION_SECRET");
-  }
-
-  return createHash("sha256").update(secret).digest();
-}
-
-function encrypt(value: string) {
-  const key = requireSessionSecret();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(value, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-
-  return Buffer.concat([iv, tag, encrypted]).toString("base64url");
-}
-
-function decrypt(value: string) {
-  const key = requireSessionSecret();
-  const buffer = Buffer.from(value, "base64url");
-  const iv = buffer.subarray(0, 12);
-  const tag = buffer.subarray(12, 28);
-  const encrypted = buffer.subarray(28);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-
-  decipher.setAuthTag(tag);
-
-  return Buffer.concat([
-    decipher.update(encrypted),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
 function getCallbackUrl(origin: string, provider: ProviderId) {
   return `${origin}/api/auth/${provider}/callback`;
 }
 
+function normalizeOrigin(origin: string) {
+  return new URL(origin).origin;
+}
+
+function isLoopbackHostname(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  );
+}
+
 export function getAppOrigin(requestOrigin?: string) {
   const appUrl = process.env.APP_URL?.trim();
+  const normalizedRequestOrigin = requestOrigin
+    ? normalizeOrigin(requestOrigin)
+    : null;
 
   if (appUrl) {
-    return appUrl.replace(/\/$/, "");
+    const normalizedAppUrl = normalizeOrigin(appUrl);
+
+    if (normalizedRequestOrigin && process.env.NODE_ENV !== "production") {
+      const configuredUrl = new URL(normalizedAppUrl);
+      const requestUrl = new URL(normalizedRequestOrigin);
+
+      if (
+        isLoopbackHostname(configuredUrl.hostname) &&
+        isLoopbackHostname(requestUrl.hostname)
+      ) {
+        return normalizedRequestOrigin;
+      }
+    }
+
+    return normalizedAppUrl;
   }
 
-  if (requestOrigin) {
-    return requestOrigin;
+  if (normalizedRequestOrigin) {
+    return normalizedRequestOrigin;
   }
 
-  return "http://127.0.0.1:3000";
+  return "http://localhost:3000";
+}
+
+export function isProviderId(value: string): value is ProviderId {
+  return value === "spotify" || value === "youtube" || value === "twitch";
 }
 
 function getProviderConfig(provider: ProviderId): ProviderConfig | null {
@@ -238,7 +288,24 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
           cache: "no-store",
         });
 
-        return response.ok;
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = (await response.json()) as {
+          id?: string;
+          display_name?: string | null;
+          email?: string | null;
+        };
+
+        if (!payload.id) {
+          return null;
+        }
+
+        return {
+          accountId: payload.id,
+          displayName: payload.display_name || payload.email || "Spotify account",
+        };
       },
     };
   }
@@ -323,7 +390,7 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
         });
 
         if (!response.ok) {
-          throw new Error("Google token refresh failed");
+          throw new Error("Google refresh token failed");
         }
 
         const payload = (await response.json()) as {
@@ -341,7 +408,7 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
       },
       verify: async (connection) => {
         const response = await fetch(
-          "https://www.googleapis.com/youtube/v3/channels?part=id&mine=true",
+          "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
           {
             headers: {
               Authorization: `Bearer ${connection.accessToken}`,
@@ -351,14 +418,28 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
         );
 
         if (!response.ok) {
-          return false;
+          return null;
         }
 
         const payload = (await response.json()) as {
-          items?: Array<{ id: string }>;
+          items?: Array<{
+            id?: string;
+            snippet?: {
+              title?: string;
+            };
+          }>;
         };
 
-        return Array.isArray(payload.items) && payload.items.length > 0;
+        const channel = payload.items?.[0];
+
+        if (!channel?.id) {
+          return null;
+        }
+
+        return {
+          accountId: channel.id,
+          displayName: channel.snippet?.title || "YouTube channel",
+        };
       },
     };
   }
@@ -460,16 +541,182 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
       });
 
       if (!response.ok) {
-        return false;
+        return null;
       }
 
       const payload = (await response.json()) as {
-        data?: Array<{ id: string }>;
+        data?: Array<{
+          id?: string;
+          display_name?: string;
+          login?: string;
+        }>;
       };
 
-      return Array.isArray(payload.data) && payload.data.length > 0;
+      const account = payload.data?.[0];
+
+      if (!account?.id) {
+        return null;
+      }
+
+      return {
+        accountId: account.id,
+        displayName: account.display_name || account.login || "Twitch account",
+      };
     },
   };
+}
+
+function rowToConnection(row: ConnectionRow) {
+  return {
+    accessToken: decrypt(row.access_token),
+    refreshToken: row.refresh_token ? decrypt(row.refresh_token) : undefined,
+    expiresAt: row.expires_at,
+    connectedAt: row.connected_at,
+    providerAccountId: row.provider_account_id ?? undefined,
+    providerAccountLabel: row.provider_account_label ?? undefined,
+  } satisfies StoredConnection;
+}
+
+async function readStoredConnectionsForUser(userId: string) {
+  const rows = queryAll<ConnectionRow>(
+    `
+      SELECT
+        provider,
+        access_token,
+        refresh_token,
+        expires_at,
+        connected_at,
+        provider_account_id,
+        provider_account_label
+      FROM provider_connections
+      WHERE user_id = ?
+    `,
+    [userId],
+  );
+  const connections: StoredConnections = {};
+
+  for (const row of rows) {
+    try {
+      connections[row.provider] = rowToConnection(row);
+    } catch {
+      execute(
+        "DELETE FROM provider_connections WHERE user_id = ? AND provider = ?",
+        [userId, row.provider],
+      );
+    }
+  }
+
+  return connections;
+}
+
+async function storeConnectionForUser(
+  userId: string,
+  provider: ProviderId,
+  connection: StoredConnection,
+) {
+  execute(
+    `
+      INSERT INTO provider_connections (
+        user_id,
+        provider,
+        access_token,
+        refresh_token,
+        expires_at,
+        connected_at,
+        provider_account_id,
+        provider_account_label
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, provider) DO UPDATE SET
+        access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        expires_at = excluded.expires_at,
+        connected_at = excluded.connected_at,
+        provider_account_id = excluded.provider_account_id,
+        provider_account_label = excluded.provider_account_label
+    `,
+    [
+      userId,
+      provider,
+      encrypt(connection.accessToken),
+      connection.refreshToken ? encrypt(connection.refreshToken) : null,
+      connection.expiresAt,
+      connection.connectedAt,
+      connection.providerAccountId ?? null,
+      connection.providerAccountLabel ?? null,
+    ],
+  );
+}
+
+async function deleteConnectionForUser(userId: string, provider: ProviderId) {
+  execute(
+    "DELETE FROM provider_connections WHERE user_id = ? AND provider = ?",
+    [userId, provider],
+  );
+}
+
+async function getConnectionForUser(
+  userId: string,
+  provider: ProviderId,
+  options?: { persist?: boolean },
+) {
+  const persist = options?.persist ?? false;
+  const connections = await readStoredConnectionsForUser(userId);
+  const existing = connections[provider];
+
+  if (!existing) {
+    return {
+      connection: null,
+      status: "missing" as const,
+    };
+  }
+
+  const current = await getUsableConnection(provider, existing);
+
+  if (!current) {
+    if (persist) {
+      await deleteConnectionForUser(userId, provider);
+    }
+
+    return {
+      connection: null,
+      status: "invalid" as const,
+    };
+  }
+
+  if (persist) {
+    await storeConnectionForUser(userId, provider, current);
+  }
+
+  return {
+    connection: current,
+    status: "connected" as const,
+  };
+}
+
+async function getProviderErrorDetail(response: Response) {
+  try {
+    const payload = (await response.json()) as {
+      error?: {
+        message?: string;
+      };
+      message?: string;
+      error_description?: string;
+    };
+
+    return (
+      payload.error?.message ?? payload.error_description ?? payload.message ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+export async function disconnectProviderForUser(
+  userId: string,
+  provider: ProviderId,
+) {
+  await deleteConnectionForUser(userId, provider);
 }
 
 export function getAvailableServices(): AvailableService[] {
@@ -491,8 +738,7 @@ export async function createAuthorizationUrl(
   }
 
   const appOrigin = getAppOrigin(origin);
-
-  const state = randomBytes(24).toString("hex");
+  const state = randomUUID();
   const cookieStore = await cookies();
 
   cookieStore.set(`${STATE_COOKIE_PREFIX}${provider}`, state, {
@@ -506,59 +752,14 @@ export async function createAuthorizationUrl(
   return config.getAuthorizeUrl({ origin: appOrigin, state });
 }
 
-async function readStoredConnections() {
-  const cookieStore = await cookies();
-  const connections: StoredConnections = {};
-
-  for (const provider of Object.keys(providerDefinitions) as ProviderId[]) {
-    const raw = cookieStore.get(`${CONNECTION_COOKIE_PREFIX}${provider}`)?.value;
-
-    if (!raw) {
-      continue;
-    }
-
-    try {
-      connections[provider] = JSON.parse(decrypt(raw)) as StoredConnection;
-    } catch {
-      cookieStore.delete(`${CONNECTION_COOKIE_PREFIX}${provider}`);
-    }
-  }
-
-  return connections;
-}
-
-async function writeStoredConnections(connections: StoredConnections) {
-  const cookieStore = await cookies();
-
-  for (const provider of Object.keys(providerDefinitions) as ProviderId[]) {
-    const connection = connections[provider];
-
-    if (!connection) {
-      cookieStore.delete(`${CONNECTION_COOKIE_PREFIX}${provider}`);
-      continue;
-    }
-
-    cookieStore.set(
-      `${CONNECTION_COOKIE_PREFIX}${provider}`,
-      encrypt(JSON.stringify(connection)),
-      {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: secureCookies,
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      },
-    );
-  }
-}
-
 export async function completeAuthorization(params: {
   provider: ProviderId;
   code: string;
   state: string | null;
+  userId: string;
   origin?: string;
 }) {
-  const { provider, code, state, origin } = params;
+  const { provider, code, state, userId, origin } = params;
   const config = getProviderConfig(provider);
 
   if (!config || !state) {
@@ -566,7 +767,8 @@ export async function completeAuthorization(params: {
   }
 
   const cookieStore = await cookies();
-  const expectedState = cookieStore.get(`${STATE_COOKIE_PREFIX}${provider}`)?.value;
+  const expectedState =
+    cookieStore.get(`${STATE_COOKIE_PREFIX}${provider}`)?.value;
 
   cookieStore.delete(`${STATE_COOKIE_PREFIX}${provider}`);
 
@@ -576,16 +778,17 @@ export async function completeAuthorization(params: {
 
   const appOrigin = getAppOrigin(origin);
   const connection = await config.exchangeCode({ code, origin: appOrigin });
-  const verified = await config.verify(connection);
+  const identity = await config.verify(connection);
 
-  if (!verified) {
+  if (!identity) {
     return false;
   }
 
-  const connections = await readStoredConnections();
-
-  connections[provider] = connection;
-  await writeStoredConnections(connections);
+  await storeConnectionForUser(userId, provider, {
+    ...connection,
+    providerAccountId: identity.accountId,
+    providerAccountLabel: identity.displayName,
+  });
 
   return true;
 }
@@ -628,28 +831,34 @@ async function getUsableConnection(
       return null;
     }
 
-    let verified = await config.verify(current);
+    let identity = await config.verify(current);
 
-    if (!verified && current.refreshToken) {
+    if (!identity && current.refreshToken) {
       current = await config.refresh(current);
-      verified = await config.verify(current);
+      identity = await config.verify(current);
     }
 
-    if (!verified) {
+    if (!identity) {
       return null;
     }
 
-    return current;
+    return {
+      ...current,
+      providerAccountId: identity.accountId,
+      providerAccountLabel: identity.displayName,
+    };
   } catch {
     return null;
   }
 }
 
-export async function getVerifiedStatuses(options?: { persist?: boolean }) {
+export async function getVerifiedStatusesForUser(
+  userId: string,
+  options?: { persist?: boolean },
+) {
   const persist = options?.persist ?? false;
-  const connections = await readStoredConnections();
+  const connections = await readStoredConnectionsForUser(userId);
   const services = getAvailableServices();
-  const nextConnections: StoredConnections = {};
   const statuses = Object.fromEntries(
     services.map((service) => [service.id, false]),
   ) as Record<ProviderId, boolean>;
@@ -657,28 +866,28 @@ export async function getVerifiedStatuses(options?: { persist?: boolean }) {
   for (const service of services) {
     const existing = connections[service.id];
 
-    if (!service.configured || !existing) {
+    if (!service.configured) {
       continue;
     }
 
-    const config = getProviderConfig(service.id);
-
-    if (!config) {
+    if (!existing) {
       continue;
     }
 
     const current = await getUsableConnection(service.id, existing);
 
     if (!current) {
+      if (persist) {
+        await deleteConnectionForUser(userId, service.id);
+      }
       continue;
     }
 
-    nextConnections[service.id] = current;
-    statuses[service.id] = true;
-  }
+    if (persist) {
+      await storeConnectionForUser(userId, service.id, current);
+    }
 
-  if (persist) {
-    await writeStoredConnections(nextConnections);
+    statuses[service.id] = true;
   }
 
   return {
@@ -687,76 +896,41 @@ export async function getVerifiedStatuses(options?: { persist?: boolean }) {
   };
 }
 
-export async function getSpotifyTopArtists(
+export async function getSpotifyTopArtistsForUser(
+  userId: string,
   options?: { persist?: boolean },
 ): Promise<SpotifyTopArtistsResult> {
-  const persist = options?.persist ?? false;
-  const connections = await readStoredConnections();
-  const spotify = connections.spotify;
+  const spotify = await getConnectionForUser(userId, "spotify", options);
 
-  if (!spotify) {
+  if (!spotify.connection) {
     return {
       artists: [],
-      error: "Spotify is not connected.",
+      error:
+        spotify.status === "missing"
+          ? "Spotify is not connected."
+          : "Spotify could not be verified anymore. Please reconnect it.",
     };
-  }
-
-  const current = await getUsableConnection("spotify", spotify);
-
-  if (!current) {
-    if (persist) {
-      await writeStoredConnections({
-        ...connections,
-        spotify: undefined,
-      });
-    }
-
-    return {
-      artists: [],
-      error: "Spotify could not be verified anymore. Please reconnect it.",
-    };
-  }
-
-  if (persist) {
-    await writeStoredConnections({
-      ...connections,
-      spotify: current,
-    });
   }
 
   const response = await fetch(
     "https://api.spotify.com/v1/me/top/artists?limit=5&time_range=medium_term",
     {
       headers: {
-        Authorization: `Bearer ${current.accessToken}`,
+        Authorization: `Bearer ${spotify.connection.accessToken}`,
       },
       cache: "no-store",
     },
   );
 
   if (!response.ok) {
-    let providerDetail = "";
-
-    try {
-      const payload = (await response.json()) as {
-        error?: {
-          message?: string;
-        };
-      };
-
-      providerDetail = payload.error?.message
-        ? ` Spotify said: ${payload.error.message}.`
-        : "";
-    } catch {
-      providerDetail = "";
-    }
+    const providerDetail = await getProviderErrorDetail(response);
 
     return {
       artists: [],
       error:
         response.status === 403
-          ? `Spotify denied access to top artists. Reconnect Spotify and approve the updated permissions.${providerDetail}`
-          : `Spotify top artists could not be fetched right now.${providerDetail}`,
+          ? `Spotify denied access to top artists. Reconnect Spotify and approve the updated permissions.${providerDetail ? ` Spotify said: ${providerDetail}.` : ""}`
+          : `Spotify top artists could not be fetched right now.${providerDetail ? ` Spotify said: ${providerDetail}.` : ""}`,
     };
   }
 
@@ -786,6 +960,267 @@ export async function getSpotifyTopArtists(
 
   return {
     artists,
+    error: null,
+  };
+}
+
+export async function getYoutubeHighlightsForUser(
+  userId: string,
+  options?: { persist?: boolean },
+): Promise<YoutubeHighlightsResult> {
+  const youtube = await getConnectionForUser(userId, "youtube", options);
+
+  if (!youtube.connection) {
+    return {
+      videos: [],
+      channels: [],
+      error:
+        youtube.status === "missing"
+          ? "YouTube is not connected."
+          : "YouTube could not be verified anymore. Please reconnect it.",
+    };
+  }
+
+  const videosResponse = await fetch(
+    "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&regionCode=US&maxResults=6",
+    {
+      headers: {
+        Authorization: `Bearer ${youtube.connection.accessToken}`,
+      },
+      cache: "no-store",
+    },
+  );
+
+  if (!videosResponse.ok) {
+    const providerDetail = await getProviderErrorDetail(videosResponse);
+
+    return {
+      videos: [],
+      channels: [],
+      error:
+        responseDetailMessage(
+          "YouTube popular uploads could not be fetched right now.",
+          providerDetail,
+        ),
+    };
+  }
+
+  const videosPayload = (await videosResponse.json()) as {
+    items?: Array<{
+      id?: string;
+      snippet?: {
+        title?: string;
+        channelId?: string;
+        channelTitle?: string;
+        thumbnails?: {
+          high?: { url?: string };
+          medium?: { url?: string };
+          default?: { url?: string };
+        };
+      };
+      statistics?: {
+        viewCount?: string;
+      };
+    }>;
+  };
+
+  const videos = (videosPayload.items ?? [])
+    .filter((video): video is NonNullable<typeof video> & { id: string } =>
+      Boolean(video.id),
+    )
+    .map((video) => ({
+      id: video.id,
+      title: video.snippet?.title ?? "Untitled video",
+      channelTitle: video.snippet?.channelTitle ?? "YouTube channel",
+      imageUrl:
+        video.snippet?.thumbnails?.high?.url ??
+        video.snippet?.thumbnails?.medium?.url ??
+        video.snippet?.thumbnails?.default?.url ??
+        null,
+      url: `https://www.youtube.com/watch?v=${video.id}`,
+      viewCount: video.statistics?.viewCount
+        ? Number(video.statistics.viewCount)
+        : null,
+    }));
+
+  const channelIds = [
+    ...new Set(
+      (videosPayload.items ?? [])
+        .map((video) => video.snippet?.channelId)
+        .filter((channelId): channelId is string => Boolean(channelId)),
+    ),
+  ].slice(0, 6);
+
+  let channels: YoutubeTopChannel[] = [];
+
+  if (channelIds.length > 0) {
+    const channelsResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(",")}`,
+      {
+        headers: {
+          Authorization: `Bearer ${youtube.connection.accessToken}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (channelsResponse.ok) {
+      const channelsPayload = (await channelsResponse.json()) as {
+        items?: Array<{
+          id?: string;
+          snippet?: {
+            title?: string;
+            customUrl?: string;
+            thumbnails?: {
+              high?: { url?: string };
+              medium?: { url?: string };
+              default?: { url?: string };
+            };
+          };
+          statistics?: {
+            subscriberCount?: string;
+          };
+        }>;
+      };
+
+      channels = (channelsPayload.items ?? [])
+        .filter(
+          (channel): channel is NonNullable<typeof channel> & { id: string } =>
+            Boolean(channel.id),
+        )
+        .map((channel) => {
+          const customUrl = channel.snippet?.customUrl?.trim();
+          const channelPath = customUrl
+            ? customUrl.startsWith("@")
+              ? customUrl
+              : `@${customUrl}`
+            : `channel/${channel.id}`;
+
+          return {
+            id: channel.id,
+            title: channel.snippet?.title ?? "YouTube channel",
+            imageUrl:
+              channel.snippet?.thumbnails?.high?.url ??
+              channel.snippet?.thumbnails?.medium?.url ??
+              channel.snippet?.thumbnails?.default?.url ??
+              null,
+            url: `https://www.youtube.com/${channelPath}`,
+            subscriberCount: channel.statistics?.subscriberCount
+              ? Number(channel.statistics.subscriberCount)
+              : null,
+          };
+        })
+        .sort(
+          (left, right) =>
+            (right.subscriberCount ?? 0) - (left.subscriberCount ?? 0),
+        );
+    }
+  }
+
+  if (videos.length === 0 && channels.length === 0) {
+    return {
+      videos: [],
+      channels: [],
+      error:
+        "YouTube is connected, but no popular uploads or channels were returned yet.",
+    };
+  }
+
+  return {
+    videos,
+    channels,
+    error: null,
+  };
+}
+
+function responseDetailMessage(message: string, detail: string) {
+  return detail ? `${message} Provider said: ${detail}.` : message;
+}
+
+export async function getTwitchTopStreamsForUser(
+  userId: string,
+  options?: { persist?: boolean },
+): Promise<TwitchTopStreamsResult> {
+  const twitch = await getConnectionForUser(userId, "twitch", options);
+
+  if (!twitch.connection) {
+    return {
+      streams: [],
+      error:
+        twitch.status === "missing"
+          ? "Twitch is not connected."
+          : "Twitch could not be verified anymore. Please reconnect it.",
+    };
+  }
+
+  const clientId = process.env.TWITCH_CLIENT_ID;
+
+  if (!clientId) {
+    return {
+      streams: [],
+      error: "Twitch credentials are missing.",
+    };
+  }
+
+  const response = await fetch("https://api.twitch.tv/helix/streams?first=6", {
+    headers: {
+      Authorization: `Bearer ${twitch.connection.accessToken}`,
+      "Client-Id": clientId,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const providerDetail = await getProviderErrorDetail(response);
+
+    return {
+      streams: [],
+      error: responseDetailMessage(
+        "Twitch top streamers could not be fetched right now.",
+        providerDetail,
+      ),
+    };
+  }
+
+  const payload = (await response.json()) as {
+    data?: Array<{
+      id?: string;
+      user_name?: string;
+      user_login?: string;
+      title?: string;
+      viewer_count?: number;
+      game_name?: string;
+      thumbnail_url?: string;
+    }>;
+  };
+
+  const streams = (payload.data ?? [])
+    .filter((stream): stream is NonNullable<typeof stream> & { id: string } =>
+      Boolean(stream.id),
+    )
+    .map((stream) => ({
+      id: stream.id,
+      broadcasterName: stream.user_name ?? stream.user_login ?? "Twitch streamer",
+      title: stream.title ?? "Live now",
+      imageUrl:
+        stream.thumbnail_url
+          ?.replace("{width}", "640")
+          .replace("{height}", "360") ?? "",
+      url: `https://www.twitch.tv/${stream.user_login ?? ""}`,
+      viewerCount: stream.viewer_count ?? 0,
+      gameName: stream.game_name ?? null,
+    }))
+    .filter((stream) => Boolean(stream.url) && Boolean(stream.imageUrl));
+
+  if (streams.length === 0) {
+    return {
+      streams: [],
+      error: "Twitch is connected, but no live streams were returned right now.",
+    };
+  }
+
+  return {
+    streams,
     error: null,
   };
 }

@@ -1,33 +1,83 @@
 import { ConnectedApps } from "./_components/connected-apps";
+import { getCurrentUser } from "@/lib/auth";
 import {
-  getSpotifyTopArtists,
-  getVerifiedStatuses,
+  getAvailableServices,
+  getSpotifyTopArtistsForUser,
+  getTwitchTopStreamsForUser,
+  getVerifiedStatusesForUser,
+  getYoutubeHighlightsForUser,
+  type ProviderId,
 } from "@/lib/integrations";
 
 type HomeProps = {
   searchParams: Promise<{
     error?: string | string[];
+    auth_error?: string | string[];
+    notice?: string | string[];
+    provider?: string | string[];
+    reset_token?: string | string[];
   }>;
 };
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { services, statuses } = await getVerifiedStatuses({ persist: false });
-  const spotifyTopArtists = statuses.spotify
-    ? await getSpotifyTopArtists({ persist: false })
-    : { artists: [], error: null };
+  const currentUser = await getCurrentUser();
+  const services = getAvailableServices();
+  const emptyStatuses = Object.fromEntries(
+    services.map((service) => [service.id, false]),
+  ) as Record<ProviderId, boolean>;
+  const { statuses } = currentUser
+    ? await getVerifiedStatusesForUser(currentUser.id, { persist: false })
+    : { statuses: emptyStatuses };
+  const [spotifyTopArtists, youtubeHighlights, twitchTopStreams] =
+    currentUser
+      ? await Promise.all([
+          statuses.spotify
+            ? getSpotifyTopArtistsForUser(currentUser.id, { persist: false })
+            : Promise.resolve({ artists: [], error: null }),
+          statuses.youtube
+            ? getYoutubeHighlightsForUser(currentUser.id, { persist: false })
+            : Promise.resolve({ videos: [], channels: [], error: null }),
+          statuses.twitch
+            ? getTwitchTopStreamsForUser(currentUser.id, { persist: false })
+            : Promise.resolve({ streams: [], error: null }),
+        ])
+      : [
+          { artists: [], error: null },
+          { videos: [], channels: [], error: null },
+          { streams: [], error: null },
+        ];
   const query = await searchParams;
   const pageError = Array.isArray(query.error)
     ? query.error[0] ?? null
     : query.error ?? null;
+  const authError = Array.isArray(query.auth_error)
+    ? query.auth_error[0] ?? null
+    : query.auth_error ?? null;
+  const notice = Array.isArray(query.notice)
+    ? query.notice[0] ?? null
+    : query.notice ?? null;
+  const noticeProvider = Array.isArray(query.provider)
+    ? query.provider[0] ?? null
+    : query.provider ?? null;
+  const resetToken = Array.isArray(query.reset_token)
+    ? query.reset_token[0] ?? null
+    : query.reset_token ?? null;
 
   return (
-    <main className="h-dvh overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(40,196,167,0.18),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(244,179,80,0.18),_transparent_22%),linear-gradient(180deg,#071117_0%,#09141b_52%,#050b10_100%)] text-stone-50">
-      <div className="mx-auto h-full w-full max-w-[1600px] px-3 py-3 sm:px-4 sm:py-4">
+    <main className="page-shell min-h-dvh text-slate-950">
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <ConnectedApps
+          currentUser={currentUser}
           services={services}
           initialStatuses={statuses}
           pageError={pageError}
+          authError={authError}
+          notice={notice}
+          noticeProvider={noticeProvider}
+          resetToken={resetToken}
           spotifyTopArtists={spotifyTopArtists}
+          youtubeHighlights={youtubeHighlights}
+          twitchTopStreams={twitchTopStreams}
         />
       </div>
     </main>

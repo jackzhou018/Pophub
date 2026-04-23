@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PopHub | Entertainment Dashboard",
-  description:
-    "A unified entertainment dashboard for streaming, music, creators, and live-event alerts.",
+  title: "PopHub",
+  description: "Connect Spotify, Google / YouTube, and Twitch in one place.",
 };
 
 export default function RootLayout({

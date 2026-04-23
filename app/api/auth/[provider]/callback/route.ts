@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import {
   completeAuthorization,
   getAppOrigin,
-  type ProviderId,
+  isProviderId,
 } from "@/lib/integrations";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,24 +18,41 @@ export async function GET(
   const state = requestUrl.searchParams.get("state");
   const origin = getAppOrigin(requestUrl.origin);
 
+  if (!isProviderId(provider)) {
+    return NextResponse.redirect(new URL("/", origin));
+  }
+
   if (!code) {
     return NextResponse.redirect(new URL("/", origin));
   }
 
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return NextResponse.redirect(new URL("/?auth_error=login_required", origin));
+  }
+
   try {
     const connected = await completeAuthorization({
-      provider: provider as ProviderId,
+      provider,
       code,
       state,
+      userId: user.id,
       origin,
     });
 
     if (!connected) {
-      return NextResponse.redirect(new URL("/?error=connect", origin));
+      return NextResponse.redirect(
+        new URL(`/?error=connect&provider=${provider}`, origin),
+      );
     }
   } catch {
-    return NextResponse.redirect(new URL("/?error=connect", origin));
+    return NextResponse.redirect(
+      new URL(`/?error=connect&provider=${provider}`, origin),
+    );
   }
 
-  return NextResponse.redirect(new URL("/", origin));
+  return NextResponse.redirect(
+    new URL(`/?notice=provider_connected&provider=${provider}`, origin),
+  );
 }

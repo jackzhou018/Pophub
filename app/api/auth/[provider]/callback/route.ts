@@ -8,6 +8,31 @@ import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+function getOAuthErrorMessage(
+  provider: string,
+  error: string,
+  errorDescription: string | null,
+) {
+  if (error === "access_denied") {
+    const providerLabel =
+      provider === "youtube"
+        ? "YouTube"
+        : provider === "spotify"
+          ? "Spotify"
+          : provider === "twitch"
+            ? "Twitch"
+            : "The provider";
+
+    return errorDescription
+      ? `${providerLabel} denied access. ${errorDescription}`
+      : `${providerLabel} denied access.`;
+  }
+
+  return errorDescription
+    ? `OAuth failed for ${provider}: ${errorDescription}`
+    : `OAuth failed for ${provider}: ${error}`;
+}
+
 export async function GET(
   request: Request,
   context: RouteContext<"/api/auth/[provider]/callback">,
@@ -16,10 +41,23 @@ export async function GET(
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const state = requestUrl.searchParams.get("state");
+  const error = requestUrl.searchParams.get("error");
+  const errorDescription = requestUrl.searchParams.get("error_description");
   const origin = getAppOrigin(requestUrl.origin);
 
   if (!isProviderId(provider)) {
     return NextResponse.redirect(new URL("/", origin));
+  }
+
+  if (error) {
+    return NextResponse.redirect(
+      new URL(
+        `/?auth_error=${encodeURIComponent(
+          getOAuthErrorMessage(provider, error, errorDescription),
+        )}&provider=${provider}`,
+        origin,
+      ),
+    );
   }
 
   if (!code) {

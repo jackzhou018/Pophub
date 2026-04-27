@@ -33,4 +33,13 @@ Redirect URIs to register:
 - `http://localhost:3000/api/auth/youtube/callback`
 - `http://localhost:3000/api/auth/twitch/callback`
 
+If you open the app on `127.0.0.1` instead of `localhost`, register the matching `http://127.0.0.1:3000/api/auth/.../callback` URLs too. Google requires the redirect URI to match exactly.
+
+For YouTube / Google OAuth, also make sure:
+
+- `YouTube Data API v3` is enabled in the same Google Cloud project as the OAuth client
+- the OAuth consent screen is configured
+- your Google account is added under `Test users` while the app is still in testing
+- the callback host matches the host you actually use in the browser and in `APP_URL`
+
 The UI only shows `Connected` after the server successfully exchanges the OAuth code, stores encrypted tokens in the database, and verifies them by fetching the provider API.

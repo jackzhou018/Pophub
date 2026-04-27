@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { AttentionSource, AttentionSourceStatus } from "@/lib/attention-sources";
 import type {
   AvailableService,
   ProviderId,
@@ -12,6 +13,7 @@ type ConnectedAppsProps = {
     email: string;
   } | null;
   services: AvailableService[];
+  attentionSources: AttentionSource[];
   initialStatuses: Partial<Record<ProviderId, boolean>>;
   pageError: string | null;
   authError: string | null;
@@ -25,8 +27,8 @@ type ConnectedAppsProps = {
 
 const providerNotes: Record<ProviderId, string> = {
   spotify: "Top artists",
-  youtube: "YouTube account",
-  twitch: "Twitch account",
+  youtube: "Subscribed channels",
+  twitch: "Followed streamers",
 };
 
 const authErrorMessages: Record<string, string> = {
@@ -75,6 +77,26 @@ function messageToneClass(tone: "success" | "warning" | "info") {
   }
 
   return "border-slate-200/70 bg-slate-50/80 text-slate-800";
+}
+
+function sourceStatusClass(status: AttentionSourceStatus) {
+  if (status === "connected") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (status === "ready") {
+    return "border-sky-200 bg-sky-50 text-sky-800";
+  }
+
+  if (status === "manual") {
+    return "border-violet-200 bg-violet-50 text-violet-800";
+  }
+
+  if (status === "unavailable") {
+    return "border-rose-200 bg-rose-50 text-rose-800";
+  }
+
+  return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
 function MessageBanner({
@@ -154,6 +176,7 @@ function AuthForm({
 export function ConnectedApps({
   currentUser,
   services,
+  attentionSources,
   initialStatuses,
   pageError,
   authError,
@@ -191,6 +214,9 @@ export function ConnectedApps({
       : null;
   const activeMessage = authMessage ?? pageMessage;
   const connectedCount = services.filter((service) => initialStatuses[service.id]).length;
+  const readySourceCount = attentionSources.filter((source) =>
+    source.status === "connected" || source.status === "ready",
+  ).length;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-10">
@@ -412,6 +438,55 @@ export function ConnectedApps({
         </section>
       </div>
 
+      <section className="surface surface-light rounded-[2rem] p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="section-label text-slate-500">Attention layer</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+              Sources
+            </h2>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-white/75 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-700">
+            {readySourceCount}/{attentionSources.length} active
+          </div>
+        </div>
+
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {attentionSources.map((source) => (
+            <li
+              key={source.id}
+              className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-slate-950">
+                    {source.name}
+                  </p>
+                  <p className="mt-1 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {source.category}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full border px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] ${sourceStatusClass(
+                    source.status,
+                  )}`}
+                >
+                  {source.statusLabel}
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                {source.summary}
+              </p>
+              {source.envVars.length > 0 ? (
+                <p className="mt-4 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {source.envVars.join(" / ")}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="surface surface-dark rounded-[2rem] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -478,7 +553,7 @@ export function ConnectedApps({
       <section className="surface surface-light rounded-[2rem] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="section-label text-slate-500">Popular right now</p>
+            <p className="section-label text-slate-500">From subscriptions</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
               YouTube
             </h2>
@@ -501,7 +576,7 @@ export function ConnectedApps({
           ) : (
             <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
               <div>
-                <p className="section-label text-slate-500">Top uploads</p>
+                <p className="section-label text-slate-500">Recent uploads</p>
                 {availableVideos.length > 0 ? (
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {availableVideos.map((video) => (
@@ -536,13 +611,13 @@ export function ConnectedApps({
                   </div>
                 ) : (
                   <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-white/75 px-5 py-6 text-sm text-slate-600">
-                    No YouTube uploads were returned yet.
+                    No recent uploads were returned yet.
                   </div>
                 )}
               </div>
 
               <div>
-                <p className="section-label text-slate-500">Top channels</p>
+                <p className="section-label text-slate-500">Subscribed channels</p>
                 {availableChannels.length > 0 ? (
                   <div className="mt-4 grid gap-3">
                     {availableChannels.map((channel) => (
@@ -576,7 +651,7 @@ export function ConnectedApps({
                   </div>
                 ) : (
                   <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-white/75 px-5 py-6 text-sm text-slate-600">
-                    No YouTube channels were returned yet.
+                    No subscribed channels were returned yet.
                   </div>
                 )}
               </div>
@@ -585,8 +660,8 @@ export function ConnectedApps({
         ) : (
           <div className="mt-6 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-5 py-6 text-sm text-slate-600">
             {currentUser
-              ? "Connect YouTube to load popular uploads and channels."
-              : "Log in, then connect YouTube to load popular uploads and channels."}
+              ? "Connect YouTube to load subscribed channels and recent uploads."
+              : "Log in, then connect YouTube to load subscribed channels and recent uploads."}
           </div>
         )}
       </section>
@@ -594,7 +669,7 @@ export function ConnectedApps({
       <section className="surface surface-dark rounded-[2rem] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="section-label text-slate-300">Live right now</p>
+            <p className="section-label text-slate-300">Followed live now</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
               Twitch
             </h2>
@@ -655,8 +730,8 @@ export function ConnectedApps({
         ) : (
           <div className="mt-6 rounded-[1.4rem] border border-dashed border-white/14 bg-white/[0.04] px-5 py-6 text-sm text-slate-200">
             {currentUser
-              ? "Connect Twitch to load top live streamers."
-              : "Log in, then connect Twitch to load top live streamers."}
+              ? "Connect Twitch to load followed live streamers."
+              : "Log in, then connect Twitch to load followed live streamers."}
           </div>
         )}
       </section>

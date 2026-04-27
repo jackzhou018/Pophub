@@ -1,3 +1,5 @@
+import "server-only";
+
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import { decrypt, encrypt } from "@/lib/security";
@@ -102,6 +104,26 @@ type ConnectionRow = {
   provider_account_label: string | null;
 };
 
+type YoutubeThumbnailSet = {
+  high?: { url?: string };
+  medium?: { url?: string };
+  default?: { url?: string };
+};
+
+type YoutubeChannelWithUploads = YoutubeTopChannel & {
+  uploadsPlaylistId: string | null;
+};
+
+type YoutubeUploadPlaylist = {
+  playlistId: string;
+  channelTitle: string;
+};
+
+type OAuthStateCookie = {
+  state: string;
+  origin: string;
+};
+
 const STATE_COOKIE_PREFIX = "pophub_oauth_state_";
 const secureCookies = process.env.NODE_ENV === "production";
 
@@ -137,17 +159,36 @@ function getCallbackUrl(origin: string, provider: ProviderId) {
   return `${origin}/api/auth/${provider}/callback`;
 }
 
-function normalizeOrigin(origin: string) {
-  return new URL(origin).origin;
+function encodeOAuthStateCookie(value: OAuthStateCookie) {
+  return JSON.stringify(value);
 }
 
-function isLoopbackHostname(hostname: string) {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "[::1]"
-  );
+function parseOAuthStateCookie(value: string | undefined): OAuthStateCookie | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<OAuthStateCookie>;
+
+    if (parsed.state && parsed.origin) {
+      return {
+        state: parsed.state,
+        origin: normalizeOrigin(parsed.origin),
+      };
+    }
+  } catch {
+    return {
+      state: value,
+      origin: getAppOrigin(),
+    };
+  }
+
+  return null;
+}
+
+function normalizeOrigin(origin: string) {
+  return new URL(origin).origin;
 }
 
 export function getAppOrigin(requestOrigin?: string) {
@@ -157,21 +198,7 @@ export function getAppOrigin(requestOrigin?: string) {
     : null;
 
   if (appUrl) {
-    const normalizedAppUrl = normalizeOrigin(appUrl);
-
-    if (normalizedRequestOrigin && process.env.NODE_ENV !== "production") {
-      const configuredUrl = new URL(normalizedAppUrl);
-      const requestUrl = new URL(normalizedRequestOrigin);
-
-      if (
-        isLoopbackHostname(configuredUrl.hostname) &&
-        isLoopbackHostname(requestUrl.hostname)
-      ) {
-        return normalizedRequestOrigin;
-      }
-    }
-
-    return normalizedAppUrl;
+    return normalizeOrigin(appUrl);
   }
 
   if (normalizedRequestOrigin) {
@@ -200,13 +227,20 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
       name: definition.name,
       clientId,
       clientSecret,
-      scopes: ["user-read-email", "user-read-private", "user-top-read"],
+      scopes: [
+        "user-read-email",
+        "user-read-private",
+        "user-top-read",
+        "user-library-read",
+        "user-follow-read",
+      ],
       getAuthorizeUrl: ({ origin, state }) => {
         const params = new URLSearchParams({
           client_id: clientId,
           response_type: "code",
           redirect_uri: getCallbackUrl(origin, provider),
-          scope: "user-read-email user-read-private user-top-read",
+          scope:
+            "user-read-email user-read-private user-top-read user-library-read user-follow-read",
           state,
           show_dialog: "true",
         });
@@ -449,13 +483,13 @@ function getProviderConfig(provider: ProviderId): ProviderConfig | null {
     name: definition.name,
     clientId,
     clientSecret,
-    scopes: ["user:read:email"],
+    scopes: ["user:read:email", "user:read:follows"],
     getAuthorizeUrl: ({ origin, state }) => {
       const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: getCallbackUrl(origin, provider),
         response_type: "code",
-        scope: "user:read:email",
+        scope: "user:read:email user:read:follows",
         state,
         force_verify: "true",
       });
@@ -694,24 +728,6 @@ async function getConnectionForUser(
   };
 }
 
-async function getProviderErrorDetail(response: Response) {
-  try {
-    const payload = (await response.json()) as {
-      error?: {
-        message?: string;
-      };
-      message?: string;
-      error_description?: string;
-    };
-
-    return (
-      payload.error?.message ?? payload.error_description ?? payload.message ?? ""
-    );
-  } catch {
-    return "";
-  }
-}
-
 export async function disconnectProviderForUser(
   userId: string,
   provider: ProviderId,
@@ -741,13 +757,17 @@ export async function createAuthorizationUrl(
   const state = randomUUID();
   const cookieStore = await cookies();
 
-  cookieStore.set(`${STATE_COOKIE_PREFIX}${provider}`, state, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: secureCookies,
-    path: "/",
-    maxAge: 60 * 10,
-  });
+  cookieStore.set(
+    `${STATE_COOKIE_PREFIX}${provider}`,
+    encodeOAuthStateCookie({ state, origin: appOrigin }),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: secureCookies,
+      path: "/",
+      maxAge: 60 * 10,
+    },
+  );
 
   return config.getAuthorizeUrl({ origin: appOrigin, state });
 }
@@ -767,16 +787,17 @@ export async function completeAuthorization(params: {
   }
 
   const cookieStore = await cookies();
-  const expectedState =
-    cookieStore.get(`${STATE_COOKIE_PREFIX}${provider}`)?.value;
+  const expectedState = parseOAuthStateCookie(
+    cookieStore.get(`${STATE_COOKIE_PREFIX}${provider}`)?.value,
+  );
 
   cookieStore.delete(`${STATE_COOKIE_PREFIX}${provider}`);
 
-  if (!expectedState || expectedState !== state) {
+  if (!expectedState || expectedState.state !== state) {
     return false;
   }
 
-  const appOrigin = getAppOrigin(origin);
+  const appOrigin = expectedState.origin || getAppOrigin(origin);
   const connection = await config.exchangeCode({ code, origin: appOrigin });
   const identity = await config.verify(connection);
 
@@ -923,14 +944,12 @@ export async function getSpotifyTopArtistsForUser(
   );
 
   if (!response.ok) {
-    const providerDetail = await getProviderErrorDetail(response);
-
     return {
       artists: [],
       error:
         response.status === 403
-          ? `Spotify denied access to top artists. Reconnect Spotify and approve the updated permissions.${providerDetail ? ` Spotify said: ${providerDetail}.` : ""}`
-          : `Spotify top artists could not be fetched right now.${providerDetail ? ` Spotify said: ${providerDetail}.` : ""}`,
+          ? "Spotify denied access to top artists. Reconnect Spotify and approve the updated permissions."
+          : "Spotify top artists could not be fetched right now.",
     };
   }
 
@@ -981,8 +1000,8 @@ export async function getYoutubeHighlightsForUser(
     };
   }
 
-  const videosResponse = await fetch(
-    "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular&regionCode=US&maxResults=6",
+  const subscriptionsResponse = await fetch(
+    "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=6&order=relevance",
     {
       headers: {
         Authorization: `Bearer ${youtube.connection.accessToken}`,
@@ -991,71 +1010,67 @@ export async function getYoutubeHighlightsForUser(
     },
   );
 
-  if (!videosResponse.ok) {
-    const providerDetail = await getProviderErrorDetail(videosResponse);
-
+  if (!subscriptionsResponse.ok) {
     return {
       videos: [],
       channels: [],
       error:
-        responseDetailMessage(
-          "YouTube popular uploads could not be fetched right now.",
-          providerDetail,
-        ),
+        subscriptionsResponse.status === 403
+          ? "YouTube denied access to subscriptions. Reconnect YouTube and approve the updated permissions."
+          : "YouTube subscriptions could not be fetched right now.",
     };
   }
 
-  const videosPayload = (await videosResponse.json()) as {
+  const subscriptionsPayload = (await subscriptionsResponse.json()) as {
     items?: Array<{
       id?: string;
       snippet?: {
         title?: string;
-        channelId?: string;
-        channelTitle?: string;
-        thumbnails?: {
-          high?: { url?: string };
-          medium?: { url?: string };
-          default?: { url?: string };
+        resourceId?: {
+          channelId?: string;
         };
-      };
-      statistics?: {
-        viewCount?: string;
+        thumbnails?: YoutubeThumbnailSet;
       };
     }>;
   };
 
-  const videos = (videosPayload.items ?? [])
-    .filter((video): video is NonNullable<typeof video> & { id: string } =>
-      Boolean(video.id),
+  const subscribedChannels: YoutubeChannelWithUploads[] = (subscriptionsPayload.items ?? [])
+    .map((subscription) => {
+      const channelId = subscription.snippet?.resourceId?.channelId;
+
+      if (!channelId) {
+        return null;
+      }
+
+      return {
+        id: channelId,
+        title: subscription.snippet?.title ?? "YouTube channel",
+        imageUrl: getYoutubeThumbnailUrl(subscription.snippet?.thumbnails),
+        url: `https://www.youtube.com/channel/${channelId}`,
+        subscriberCount: null,
+        uploadsPlaylistId: null as string | null,
+      };
+    })
+    .filter((channel): channel is NonNullable<typeof channel> =>
+      Boolean(channel),
     )
-    .map((video) => ({
-      id: video.id,
-      title: video.snippet?.title ?? "Untitled video",
-      channelTitle: video.snippet?.channelTitle ?? "YouTube channel",
-      imageUrl:
-        video.snippet?.thumbnails?.high?.url ??
-        video.snippet?.thumbnails?.medium?.url ??
-        video.snippet?.thumbnails?.default?.url ??
-        null,
-      url: `https://www.youtube.com/watch?v=${video.id}`,
-      viewCount: video.statistics?.viewCount
-        ? Number(video.statistics.viewCount)
-        : null,
-    }));
+    .slice(0, 6);
 
-  const channelIds = [
-    ...new Set(
-      (videosPayload.items ?? [])
-        .map((video) => video.snippet?.channelId)
-        .filter((channelId): channelId is string => Boolean(channelId)),
-    ),
-  ].slice(0, 6);
+  if (subscribedChannels.length === 0) {
+    return {
+      videos: [],
+      channels: [],
+      error:
+        "YouTube is connected, but no subscriptions were returned for this account.",
+    };
+  }
 
-  let channels: YoutubeTopChannel[] = [];
+  let channels: YoutubeChannelWithUploads[] = subscribedChannels;
+  const channelIds = subscribedChannels.map((channel) => channel.id);
 
   if (channelIds.length > 0) {
     const channelsResponse = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(",")}`,
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&id=${channelIds.join(",")}`,
       {
         headers: {
           Authorization: `Bearer ${youtube.connection.accessToken}`,
@@ -1071,14 +1086,15 @@ export async function getYoutubeHighlightsForUser(
           snippet?: {
             title?: string;
             customUrl?: string;
-            thumbnails?: {
-              high?: { url?: string };
-              medium?: { url?: string };
-              default?: { url?: string };
-            };
+            thumbnails?: YoutubeThumbnailSet;
           };
           statistics?: {
             subscriberCount?: string;
+          };
+          contentDetails?: {
+            relatedPlaylists?: {
+              uploads?: string;
+            };
           };
         }>;
       };
@@ -1099,42 +1115,175 @@ export async function getYoutubeHighlightsForUser(
           return {
             id: channel.id,
             title: channel.snippet?.title ?? "YouTube channel",
-            imageUrl:
-              channel.snippet?.thumbnails?.high?.url ??
-              channel.snippet?.thumbnails?.medium?.url ??
-              channel.snippet?.thumbnails?.default?.url ??
-              null,
+            imageUrl: getYoutubeThumbnailUrl(channel.snippet?.thumbnails),
             url: `https://www.youtube.com/${channelPath}`,
             subscriberCount: channel.statistics?.subscriberCount
               ? Number(channel.statistics.subscriberCount)
               : null,
+            uploadsPlaylistId:
+              channel.contentDetails?.relatedPlaylists?.uploads ?? null,
           };
         })
-        .sort(
-          (left, right) =>
-            (right.subscriberCount ?? 0) - (left.subscriberCount ?? 0),
-        );
+        .sort((left, right) => {
+          return channelIds.indexOf(left.id) - channelIds.indexOf(right.id);
+        });
     }
   }
 
-  if (videos.length === 0 && channels.length === 0) {
+  const uploadPlaylistIds = channels
+    .map((channel) => ({
+      playlistId: channel.uploadsPlaylistId,
+      channelTitle: channel.title,
+    }))
+    .filter(
+      (channel): channel is YoutubeUploadPlaylist =>
+        Boolean(channel.playlistId),
+    )
+    .slice(0, 6);
+
+  const playlistItems = (
+    await Promise.all(
+      uploadPlaylistIds.map(async (channel) => {
+        const params = new URLSearchParams({
+          part: "snippet,contentDetails",
+          playlistId: channel.playlistId,
+          maxResults: "1",
+        });
+        const response = await fetch(
+          `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${youtube.connection.accessToken}`,
+            },
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok) {
+          return [];
+        }
+
+        const payload = (await response.json()) as {
+          items?: Array<{
+            snippet?: {
+              title?: string;
+              publishedAt?: string;
+              channelTitle?: string;
+              thumbnails?: YoutubeThumbnailSet;
+              resourceId?: {
+                videoId?: string;
+              };
+            };
+            contentDetails?: {
+              videoId?: string;
+              videoPublishedAt?: string;
+            };
+          }>;
+        };
+
+        return (payload.items ?? []).map((item) => ({
+          id: item.contentDetails?.videoId ?? item.snippet?.resourceId?.videoId,
+          title: item.snippet?.title ?? "Untitled video",
+          channelTitle: item.snippet?.channelTitle ?? channel.channelTitle,
+          imageUrl: getYoutubeThumbnailUrl(item.snippet?.thumbnails),
+          publishedAt:
+            item.contentDetails?.videoPublishedAt ?? item.snippet?.publishedAt ?? "",
+        }));
+      }),
+    )
+  ).flat();
+
+  const videoIds = [
+    ...new Set(
+      playlistItems
+        .map((video) => video.id)
+        .filter((videoId): videoId is string => Boolean(videoId)),
+    ),
+  ];
+  const videoViewCounts = new Map<string, number | null>();
+
+  if (videoIds.length > 0) {
+    const statsResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds.join(",")}`,
+      {
+        headers: {
+          Authorization: `Bearer ${youtube.connection.accessToken}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (statsResponse.ok) {
+      const statsPayload = (await statsResponse.json()) as {
+        items?: Array<{
+          id?: string;
+          statistics?: {
+            viewCount?: string;
+          };
+        }>;
+      };
+
+      for (const item of statsPayload.items ?? []) {
+        if (item.id) {
+          videoViewCounts.set(
+            item.id,
+            item.statistics?.viewCount ? Number(item.statistics.viewCount) : null,
+          );
+        }
+      }
+    }
+  }
+
+  const videos = playlistItems
+    .filter((video): video is typeof video & { id: string } =>
+      Boolean(video.id),
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.publishedAt || "0") -
+        Date.parse(left.publishedAt || "0"),
+    )
+    .slice(0, 6)
+    .map((video) => ({
+      id: video.id,
+      title: video.title,
+      channelTitle: video.channelTitle,
+      imageUrl: video.imageUrl,
+      url: `https://www.youtube.com/watch?v=${video.id}`,
+      viewCount: videoViewCounts.get(video.id) ?? null,
+    }));
+
+  const visibleChannels: YoutubeTopChannel[] = channels.map((channel) => ({
+    id: channel.id,
+    title: channel.title,
+    imageUrl: channel.imageUrl,
+    url: channel.url,
+    subscriberCount: channel.subscriberCount,
+  }));
+
+  if (videos.length === 0 && visibleChannels.length === 0) {
     return {
       videos: [],
       channels: [],
       error:
-        "YouTube is connected, but no popular uploads or channels were returned yet.",
+        "YouTube is connected, but no subscribed channels or recent uploads were returned yet.",
     };
   }
 
   return {
     videos,
-    channels,
+    channels: visibleChannels,
     error: null,
   };
 }
 
-function responseDetailMessage(message: string, detail: string) {
-  return detail ? `${message} Provider said: ${detail}.` : message;
+function getYoutubeThumbnailUrl(thumbnails?: YoutubeThumbnailSet) {
+  return (
+    thumbnails?.high?.url ??
+    thumbnails?.medium?.url ??
+    thumbnails?.default?.url ??
+    null
+  );
 }
 
 export async function getTwitchTopStreamsForUser(
@@ -1154,31 +1303,37 @@ export async function getTwitchTopStreamsForUser(
   }
 
   const clientId = process.env.TWITCH_CLIENT_ID;
+  const twitchUserId = twitch.connection.providerAccountId;
 
-  if (!clientId) {
+  if (!clientId || !twitchUserId) {
     return {
       streams: [],
-      error: "Twitch credentials are missing.",
+      error: "Twitch could not be verified anymore. Please reconnect it.",
     };
   }
 
-  const response = await fetch("https://api.twitch.tv/helix/streams?first=6", {
-    headers: {
-      Authorization: `Bearer ${twitch.connection.accessToken}`,
-      "Client-Id": clientId,
-    },
-    cache: "no-store",
+  const params = new URLSearchParams({
+    first: "6",
+    user_id: twitchUserId,
   });
+  const response = await fetch(
+    `https://api.twitch.tv/helix/streams/followed?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${twitch.connection.accessToken}`,
+        "Client-Id": clientId,
+      },
+      cache: "no-store",
+    },
+  );
 
   if (!response.ok) {
-    const providerDetail = await getProviderErrorDetail(response);
-
     return {
       streams: [],
-      error: responseDetailMessage(
-        "Twitch top streamers could not be fetched right now.",
-        providerDetail,
-      ),
+      error:
+        response.status === 401 || response.status === 403
+          ? "Twitch denied access to followed streams. Reconnect Twitch and approve the updated permissions."
+          : "Twitch followed streams could not be fetched right now.",
     };
   }
 
@@ -1215,7 +1370,7 @@ export async function getTwitchTopStreamsForUser(
   if (streams.length === 0) {
     return {
       streams: [],
-      error: "Twitch is connected, but no live streams were returned right now.",
+      error: "Twitch is connected, but none of your followed channels are live right now.",
     };
   }
 

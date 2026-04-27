@@ -1,6 +1,13 @@
+import "server-only";
+
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
-import { createPasswordHash, createSessionToken, hashSessionToken, verifyPasswordHash } from "@/lib/security";
+import {
+  createPasswordHash,
+  createSessionToken,
+  hashSessionToken,
+  verifyPasswordHash,
+} from "@/lib/security";
 import { execute, queryOne } from "@/lib/db";
 
 type StoredUser = {

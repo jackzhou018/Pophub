@@ -38,6 +38,10 @@ yarn-error.log*
 /.codex
 /.data
 
+# local setup notes
+/notex.txt
+/notes.txt
+
 # vercel
 .vercel
 

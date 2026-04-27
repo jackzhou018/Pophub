@@ -8,11 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function getOAuthErrorMessage(
-  provider: string,
-  error: string,
-  errorDescription: string | null,
-) {
+function getOAuthErrorMessage(provider: string, error: string) {
   if (error === "access_denied") {
     const providerLabel =
       provider === "youtube"
@@ -23,14 +19,10 @@ function getOAuthErrorMessage(
             ? "Twitch"
             : "The provider";
 
-    return errorDescription
-      ? `${providerLabel} denied access. ${errorDescription}`
-      : `${providerLabel} denied access.`;
+    return `${providerLabel} denied access.`;
   }
 
-  return errorDescription
-    ? `OAuth failed for ${provider}: ${errorDescription}`
-    : `OAuth failed for ${provider}: ${error}`;
+  return `OAuth failed for ${provider}.`;
 }
 
 export async function GET(
@@ -42,7 +34,6 @@ export async function GET(
   const code = requestUrl.searchParams.get("code");
   const state = requestUrl.searchParams.get("state");
   const error = requestUrl.searchParams.get("error");
-  const errorDescription = requestUrl.searchParams.get("error_description");
   const origin = getAppOrigin(requestUrl.origin);
 
   if (!isProviderId(provider)) {
@@ -53,7 +44,7 @@ export async function GET(
     return NextResponse.redirect(
       new URL(
         `/?auth_error=${encodeURIComponent(
-          getOAuthErrorMessage(provider, error, errorDescription),
+          getOAuthErrorMessage(provider, error),
         )}&provider=${provider}`,
         origin,
       ),

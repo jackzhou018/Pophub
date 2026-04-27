@@ -1,10 +1,30 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import "server-only";
+
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+} from "crypto";
+
+const MIN_PRODUCTION_SECRET_LENGTH = 32;
 
 function requireSessionSecret() {
   const secret = process.env.POPHUB_SESSION_SECRET;
 
   if (!secret) {
     throw new Error("Missing POPHUB_SESSION_SECRET");
+  }
+
+  if (
+    process.env.NODE_ENV === "production" &&
+    secret.length < MIN_PRODUCTION_SECRET_LENGTH
+  ) {
+    throw new Error(
+      `POPHUB_SESSION_SECRET must be at least ${MIN_PRODUCTION_SECRET_LENGTH} characters in production`,
+    );
   }
 
   return createHash("sha256").update(secret).digest();
@@ -62,7 +82,11 @@ export function verifyPasswordHash(password: string, storedHash: string) {
   }
 
   const expected = Buffer.from(hashHex, "hex");
-  const actual = scryptSync(password, Buffer.from(saltHex, "hex"), expected.length);
+  const actual = scryptSync(
+    password,
+    Buffer.from(saltHex, "hex"),
+    expected.length,
+  );
 
   return timingSafeEqual(actual, expected);
 }

@@ -4,7 +4,7 @@ Entertainment hub.
 
 Copy `.env.example` to `.env.local` and fill in the credentials you want to use.
 
-Set `APP_URL` to the exact origin you want OAuth callbacks to use in development. For local OAuth, keep it aligned with the host you actually open in the browser, for example `http://localhost:3000`.
+Set `APP_URL` to the exact origin registered with each OAuth provider. For local OAuth, use one host consistently, for example `http://localhost:3000` or `http://127.0.0.1:3000`.
 
 Set `POPHUB_DB_PATH` if you want the SQLite database somewhere other than `.data/pophub.sqlite`.
 
@@ -27,13 +27,25 @@ Supported providers with real server-verified auth:
 - YouTube
 - Twitch
 
+API-key sources prepared:
+
+- Ticketmaster Discovery API for concerts, ticketed sports, and local events
+- TMDb for movie releases and trailers
+- TheSportsDB for sports schedules and results metadata
+
+Connected-account content is personalized:
+
+- Spotify shows the signed-in user's top artists
+- YouTube shows channels the signed-in user subscribes to and recent uploads from those channels
+- Twitch shows live streams from channels the signed-in user follows
+
 Redirect URIs to register:
 
 - `http://localhost:3000/api/auth/spotify/callback`
 - `http://localhost:3000/api/auth/youtube/callback`
 - `http://localhost:3000/api/auth/twitch/callback`
 
-If you open the app on `127.0.0.1` instead of `localhost`, register the matching `http://127.0.0.1:3000/api/auth/.../callback` URLs too. Google requires the redirect URI to match exactly.
+If `APP_URL` is `http://127.0.0.1:3000`, register the matching `http://127.0.0.1:3000/api/auth/.../callback` URLs instead. Spotify, Google, and Twitch require the redirect URI to match exactly.
 
 For YouTube / Google OAuth, also make sure:
 
@@ -41,5 +53,17 @@ For YouTube / Google OAuth, also make sure:
 - the OAuth consent screen is configured
 - your Google account is added under `Test users` while the app is still in testing
 - the callback host matches the host you actually use in the browser and in `APP_URL`
+
+For Twitch OAuth, approve `user:read:follows` so PopHub can load followed streams. Existing Twitch connections made before that scope was added should be reconnected.
+
+For Spotify OAuth, approve `user-read-email`, `user-read-private`, `user-top-read`, `user-library-read`, and `user-follow-read`. Existing Spotify connections made before the podcast/new-album scopes were added should be reconnected.
+
+For API-key sources:
+
+- set `TICKETMASTER_API_KEY` for concerts, ticketed sports, and local events
+- set `TMDB_API_KEY` for movie releases and trailers
+- set `THESPORTSDB_API_KEY` for sports schedules/results
+
+Netflix and Hulu do not have normal public user OAuth APIs for this type of consumer app. Model them through manual saves/imports or catalog availability metadata; do not ask users for their streaming credentials.
 
 The UI only shows `Connected` after the server successfully exchanges the OAuth code, stores encrypted tokens in the database, and verifies them by fetching the provider API.

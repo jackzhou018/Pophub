@@ -1,6 +1,5 @@
 import { ConnectedApps } from "./_components/connected-apps";
 import { getCurrentUser } from "@/lib/auth";
-import { getAttentionSources } from "@/lib/attention-sources";
 import {
   getAvailableServices,
   getSpotifyTopArtistsForUser,
@@ -29,7 +28,6 @@ export default async function Home({ searchParams }: HomeProps) {
   const { statuses } = currentUser
     ? await getVerifiedStatusesForUser(currentUser.id, { persist: false })
     : { statuses: emptyStatuses };
-  const attentionSources = getAttentionSources(statuses);
   const [spotifyTopArtists, youtubeHighlights, twitchTopStreams] =
     currentUser
       ? await Promise.all([
@@ -66,12 +64,11 @@ export default async function Home({ searchParams }: HomeProps) {
     : query.reset_token ?? null;
 
   return (
-    <main className="page-shell min-h-dvh text-slate-950">
+    <main className="page-shell flex-1 text-zinc-950">
       <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <ConnectedApps
           currentUser={currentUser}
           services={services}
-          attentionSources={attentionSources}
           initialStatuses={statuses}
           pageError={pageError}
           authError={authError}

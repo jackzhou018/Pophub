@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { AttentionSource, AttentionSourceStatus } from "@/lib/attention-sources";
 import type {
   AvailableService,
@@ -13,7 +14,6 @@ type ConnectedAppsProps = {
     email: string;
   } | null;
   services: AvailableService[];
-  attentionSources: AttentionSource[];
   initialStatuses: Partial<Record<ProviderId, boolean>>;
   pageError: string | null;
   authError: string | null;
@@ -25,11 +25,20 @@ type ConnectedAppsProps = {
   twitchTopStreams: TwitchTopStreamsResult;
 };
 
-const providerNotes: Record<ProviderId, string> = {
-  spotify: "Top artists",
-  youtube: "Subscribed channels",
-  twitch: "Followed streamers",
+type SourceMarketplaceProps = {
+  currentUser: {
+    email: string;
+  } | null;
+  services: AvailableService[];
+  initialStatuses: Partial<Record<ProviderId, boolean>>;
+  showHeader?: boolean;
 };
+
+type AttentionSourcesPanelProps = {
+  attentionSources: AttentionSource[];
+};
+
+type Tone = "success" | "warning" | "info";
 
 const authErrorMessages: Record<string, string> = {
   invalid_email: "Enter a valid email address.",
@@ -49,12 +58,127 @@ const noticeMessages: Record<string, string> = {
   password_reset: "Password updated.",
 };
 
+const providerCategory: Record<ProviderId, string> = {
+  spotify: "Music",
+  youtube: "Video",
+  twitch: "Live",
+};
+
+const providerMerch: Record<
+  ProviderId,
+  {
+    headline: string;
+    detail: string;
+    accent: string;
+    available: string;
+  }
+> = {
+  spotify: {
+    headline: "Music preview",
+    detail: "Prototype rack for top artists, saved shows, and release planning",
+    accent: "bg-emerald-300 text-zinc-950",
+    available: "Supported source",
+  },
+  youtube: {
+    headline: "Creator preview",
+    detail: "Prototype rack for subscriptions, uploads, and creator videos",
+    accent: "bg-rose-300 text-zinc-950",
+    available: "Supported source",
+  },
+  twitch: {
+    headline: "Live preview",
+    detail: "Prototype rack for followed streamers and live creator planning",
+    accent: "bg-violet-300 text-zinc-950",
+    available: "Supported source",
+  },
+};
+
+const categoryTabs = [
+  "Watch",
+  "Listen",
+  "Creators",
+  "Concerts",
+  "Sports",
+  "Live",
+  "For You",
+  "Sources",
+];
+
+const staticDrops = [
+  {
+    id: "netflix-return",
+    label: "Demo mode",
+    title: "Returning series watchlist",
+    source: "Manual tracker",
+    meta: "Coming soon",
+    tone: "bg-red-500",
+  },
+  {
+    id: "hulu-weekly",
+    label: "Preview",
+    title: "Weekly episode tracker",
+    source: "Manual tracker",
+    meta: "Coming soon",
+    tone: "bg-lime-300",
+  },
+  {
+    id: "tickets-soon",
+    label: "Preview",
+    title: "Concert watchlist planning",
+    source: "Events",
+    meta: "No ticketing yet",
+    tone: "bg-amber-300",
+  },
+  {
+    id: "film-night",
+    label: "Demo mode",
+    title: "Movies to plan for the weekend",
+    source: "Streaming",
+    meta: "Manual queue",
+    tone: "bg-zinc-100",
+  },
+];
+
+const sourceRail = [
+  "Netflix",
+  "YouTube",
+  "Spotify",
+  "Hulu",
+  "Ticketmaster",
+  "Twitch",
+  "Max",
+  "Disney+",
+  "Prime Video",
+  "Apple Music",
+];
+
+const footerGroups = [
+  {
+    title: "Watch",
+    links: ["Episode planning", "Movie releases", "Trailer previews", "Manual saves"],
+  },
+  {
+    title: "Listen",
+    links: ["Album planning", "Podcasts", "Top artists", "Release preview"],
+  },
+  {
+    title: "Creators",
+    links: ["YouTube preview", "Twitch source", "Subscriptions", "Creator planning"],
+  },
+  {
+    title: "Going out",
+    links: ["Concert planning", "Local events", "Sports", "Ticket reminders"],
+  },
+  {
+    title: "Sources",
+    links: ["Connect Spotify", "Connect YouTube", "Connect Twitch", "Manual watchlist"],
+  },
+];
+
 const fieldClassName = "field-input mt-2";
 const primaryButtonClassName =
   "button-primary px-4 py-3 disabled:cursor-wait disabled:opacity-70";
 const secondaryButtonClassName = "button-secondary px-4 py-3";
-const darkGhostButtonClassName =
-  "button-ghost border-white/15 bg-white/[0.06] px-4 py-3 text-slate-50";
 
 function formatCount(value: number | null, noun: string) {
   if (value === null) {
@@ -67,49 +191,71 @@ function formatCount(value: number | null, noun: string) {
   }).format(value)} ${noun}`;
 }
 
-function messageToneClass(tone: "success" | "warning" | "info") {
+function messageToneClass(tone: Tone) {
   if (tone === "success") {
-    return "border-emerald-200/70 bg-emerald-50/80 text-emerald-950";
+    return "border-emerald-300 bg-emerald-50 text-emerald-950";
   }
 
   if (tone === "warning") {
-    return "border-amber-200/70 bg-amber-50/80 text-amber-950";
+    return "border-amber-300 bg-amber-50 text-amber-950";
   }
 
-  return "border-slate-200/70 bg-slate-50/80 text-slate-800";
+  return "border-zinc-300 bg-zinc-50 text-zinc-950";
 }
 
 function sourceStatusClass(status: AttentionSourceStatus) {
   if (status === "connected") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    return "bg-emerald-300 text-zinc-950";
   }
 
   if (status === "ready") {
-    return "border-sky-200 bg-sky-50 text-sky-800";
+    return "bg-cyan-200 text-zinc-950";
   }
 
   if (status === "manual") {
-    return "border-violet-200 bg-violet-50 text-violet-800";
+    return "bg-amber-300 text-zinc-950";
   }
 
   if (status === "unavailable") {
-    return "border-rose-200 bg-rose-50 text-rose-800";
+    return "bg-rose-300 text-zinc-950";
   }
 
-  return "border-slate-200 bg-slate-100 text-slate-600";
+  return "bg-zinc-200 text-zinc-950";
+}
+
+function serviceStatus(
+  service: AvailableService,
+  currentUser: { email: string } | null,
+  initialStatuses: Partial<Record<ProviderId, boolean>>,
+) {
+  const connected = Boolean(initialStatuses[service.id]);
+
+  if (connected) {
+    return "Connected";
+  }
+
+  if (!service.configured) {
+    return "Needs keys";
+  }
+
+  if (!currentUser) {
+    return "Sign in";
+  }
+
+  return "Available";
 }
 
 function MessageBanner({
   tone,
   children,
 }: {
-  tone: "success" | "warning" | "info";
+  tone: Tone;
   children: ReactNode;
 }) {
   return (
     <div
       aria-live="polite"
-      className={`rounded-[1.15rem] border px-4 py-3 text-sm leading-6 ${messageToneClass(
+      className={`rounded-none border px-4 py-3 text-sm leading-6 ${messageToneClass(
         tone,
       )}`}
     >
@@ -131,7 +277,7 @@ function AuthForm({
     <form action={action} method="post" className="space-y-3">
       <div>
         <label
-          className="section-label text-[0.67rem] text-slate-500"
+          className="store-label text-[0.68rem] text-zinc-500"
           htmlFor={`${idPrefix}-email`}
         >
           Email
@@ -150,7 +296,7 @@ function AuthForm({
       </div>
       <div>
         <label
-          className="section-label text-[0.67rem] text-slate-500"
+          className="store-label text-[0.68rem] text-zinc-500"
           htmlFor={`${idPrefix}-password`}
         >
           Password
@@ -173,10 +319,699 @@ function AuthForm({
   );
 }
 
+function ProductVisual({
+  imageUrl,
+  tone,
+  title,
+}: {
+  imageUrl?: string | null;
+  tone: string;
+  title: string;
+}) {
+  return (
+    <div className="relative aspect-[4/5] overflow-hidden bg-zinc-200">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.035]"
+        />
+      ) : (
+        <div
+          className={`flex h-full w-full items-end bg-[linear-gradient(135deg,rgba(24,24,27,0.18),rgba(24,24,27,0.76))] ${tone}`}
+        >
+          <span className="p-4 text-4xl font-black uppercase leading-none tracking-tighter text-zinc-950/80 mix-blend-multiply">
+            {title.slice(0, 16)}
+          </span>
+        </div>
+      )}
+      <div className="absolute left-3 top-3 bg-zinc-950 px-2 py-1 text-[0.63rem] font-black uppercase tracking-[0.14em] text-zinc-50">
+        Preview
+      </div>
+    </div>
+  );
+}
+
+function CampaignHero({
+  leadVideo,
+  leadArtist,
+  leadStream,
+}: {
+  leadVideo: YoutubeHighlightsResult["videos"][number] | undefined;
+  leadArtist: SpotifyTopArtistsResult["artists"][number] | undefined;
+  leadStream: TwitchTopStreamsResult["streams"][number] | undefined;
+}) {
+  return (
+    <section className="store-campaign grid overflow-hidden border border-zinc-950 bg-zinc-100 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
+      <div className="flex min-h-[34rem] flex-col justify-between bg-zinc-950 p-5 text-zinc-50 sm:p-8 lg:p-10">
+        <div>
+          <p className="store-label text-rose-200">Prototype discovery feed</p>
+          <h1 className="mt-5 max-w-4xl text-6xl font-black uppercase leading-[0.86] tracking-[-0.08em] sm:text-7xl lg:text-8xl">
+            Plan your entertainment queue.
+          </h1>
+        </div>
+        <div className="mt-8 grid gap-3 sm:grid-cols-[auto_auto_1fr]">
+          <Link href="#preview-drops" className={primaryButtonClassName}>
+            Preview drops
+          </Link>
+          <Link href="/connections" className={secondaryButtonClassName}>
+            Connect sources
+          </Link>
+          <p className="max-w-md text-sm leading-6 text-zinc-400 sm:pl-3">
+            Preview creator uploads, music releases, live streams, and event
+            reminders. Connect supported sources or track the rest manually.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid min-h-[34rem] grid-rows-[1fr_auto] bg-zinc-50">
+        <div className="grid grid-cols-2">
+          <FeaturePoster
+            label="Watch"
+            title={leadVideo?.title ?? "Creator upload preview"}
+            meta={leadVideo?.channelTitle ?? "YouTube source preview"}
+            imageUrl={leadVideo?.imageUrl}
+            href={leadVideo?.url}
+            tone="bg-rose-300"
+          />
+          <FeaturePoster
+            label="Listen"
+            title={leadArtist?.name ?? "Artist rack preview"}
+            meta="Spotify source preview"
+            imageUrl={leadArtist?.imageUrl}
+            href={leadArtist?.url}
+            tone="bg-emerald-300"
+          />
+        </div>
+        <div className="border-t border-zinc-950 bg-amber-300 p-5 text-zinc-950">
+          <p className="store-label">Live source preview</p>
+          <p className="mt-2 text-xl font-black uppercase leading-tight tracking-tighter">
+            {leadStream?.broadcasterName ?? "Twitch source"}
+          </p>
+          <p className="mt-1 line-clamp-2 text-sm font-semibold">
+            {leadStream?.title ??
+              "This preview rack stays empty until a supported source returns live data."}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeaturePoster({
+  label,
+  title,
+  meta,
+  imageUrl,
+  href,
+  tone,
+}: {
+  label: string;
+  title: string;
+  meta: string;
+  imageUrl?: string | null;
+  href?: string;
+  tone: string;
+}) {
+  const poster = (
+    <article className="group relative min-h-full border-l border-zinc-950">
+      <ProductVisual imageUrl={imageUrl} tone={tone} title={title} />
+      <div className="border-t border-zinc-950 bg-zinc-50 p-4 text-zinc-950">
+        <p className="store-label text-zinc-500">{label}</p>
+        <h2 className="mt-2 line-clamp-2 text-xl font-black uppercase leading-none tracking-tighter">
+          {title}
+        </h2>
+        <p className="mt-2 truncate text-sm font-semibold text-zinc-600">{meta}</p>
+      </div>
+    </article>
+  );
+
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer">
+      {poster}
+    </a>
+  ) : (
+    poster
+  );
+}
+
+function DropGrid({
+  spotifyTopArtists,
+  youtubeHighlights,
+  twitchTopStreams,
+}: {
+  spotifyTopArtists: SpotifyTopArtistsResult;
+  youtubeHighlights: YoutubeHighlightsResult;
+  twitchTopStreams: TwitchTopStreamsResult;
+}) {
+  const dynamicDrops = [
+    ...youtubeHighlights.videos.slice(0, 4).map((video) => ({
+      id: `video-${video.id}`,
+      label: "Connected source",
+      title: video.title,
+      source: video.channelTitle,
+      meta: formatCount(video.viewCount, "views"),
+      imageUrl: video.imageUrl,
+      href: video.url,
+      tone: "bg-rose-300",
+    })),
+    ...spotifyTopArtists.artists.slice(0, 4).map((artist) => ({
+      id: `artist-${artist.id}`,
+      label: "Connected source",
+      title: artist.name,
+      source: "Spotify",
+      meta: "Listen next",
+      imageUrl: artist.imageUrl,
+      href: artist.url,
+      tone: "bg-emerald-300",
+    })),
+    ...twitchTopStreams.streams.slice(0, 3).map((stream) => ({
+      id: `stream-${stream.id}`,
+      label: "Connected source",
+      title: stream.broadcasterName,
+      source: stream.gameName ?? "Twitch",
+      meta: formatCount(stream.viewerCount, "viewers"),
+      imageUrl: stream.imageUrl,
+      href: stream.url,
+      tone: "bg-violet-300",
+    })),
+  ];
+  const drops = [
+    ...dynamicDrops,
+    ...staticDrops.map((drop) => ({
+      ...drop,
+      imageUrl: null,
+      href: undefined,
+    })),
+  ].slice(0, 12);
+
+  return (
+    <section id="preview-drops" className="store-section">
+      <SectionHeader
+        eyebrow="Prototype discovery feed"
+        title="Preview drops"
+        action="Connect sources"
+        href="/connections"
+      />
+      <div className="grid grid-cols-2 gap-px border border-zinc-950 bg-zinc-950 md:grid-cols-3 xl:grid-cols-4">
+        {drops.map((drop) => (
+          <DropCard key={drop.id} {...drop} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DropCard({
+  label,
+  title,
+  source,
+  meta,
+  imageUrl,
+  href,
+  tone,
+}: {
+  label: string;
+  title: string;
+  source: string;
+  meta: string;
+  imageUrl?: string | null;
+  href?: string;
+  tone: string;
+}) {
+  const card = (
+    <article className="group bg-zinc-50 text-zinc-950">
+      <ProductVisual imageUrl={imageUrl} tone={tone} title={title} />
+      <div className="min-h-36 border-t border-zinc-950 p-4">
+        <p className="store-label text-zinc-500">{label}</p>
+        <h3 className="mt-2 line-clamp-2 text-lg font-black uppercase leading-none tracking-tighter">
+          {title}
+        </h3>
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm font-semibold">
+          <span className="truncate">{source}</span>
+          <span className="shrink-0 text-zinc-500">{meta}</span>
+        </div>
+      </div>
+    </article>
+  );
+
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer">
+      {card}
+    </a>
+  ) : (
+    card
+  );
+}
+
+function SourceRail({
+  services,
+  initialStatuses,
+}: {
+  services: AvailableService[];
+  initialStatuses: Partial<Record<ProviderId, boolean>>;
+}) {
+  const connectedNames = services
+    .filter((service) => initialStatuses[service.id])
+    .map((service) => service.name);
+  const supportedNames = services.map((service) => service.name);
+
+  return (
+    <section className="border-y border-zinc-950 bg-zinc-50 text-zinc-950">
+      <div className="grid gap-px bg-zinc-950 sm:grid-cols-2 lg:grid-cols-5">
+        {sourceRail.map((source) => {
+          const connected = connectedNames.includes(source);
+          const supported = supportedNames.includes(source);
+
+          return (
+            <div
+              key={source}
+              className="flex min-h-24 items-center justify-between bg-zinc-50 p-4 transition duration-200 hover:bg-rose-100"
+            >
+              <div>
+                <p className="text-xl font-black uppercase tracking-tighter">
+                  {source}
+                </p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">
+                  {connected ? "Connected" : supported ? "Available" : "Coming soon"}
+                </p>
+              </div>
+              <span className="text-xl font-black">+</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function EditorialCollections() {
+  const collections = [
+    {
+      title: "Friday night queue",
+      detail: "Shows, trailers, and creator uploads to plan manually for now.",
+      tone: "bg-rose-300",
+    },
+    {
+      title: "Albums worth the replay",
+      detail: "Artist-led listening picks from supported or future sources.",
+      tone: "bg-emerald-300",
+    },
+    {
+      title: "Creators breaking through",
+      detail: "Creator source previews for uploads, channels, and live follows.",
+      tone: "bg-violet-300",
+    },
+    {
+      title: "Concerts before they sell out",
+      detail: "Venue nights and tour reminders for manual planning.",
+      tone: "bg-amber-300",
+    },
+  ];
+
+  return (
+    <section className="store-section">
+      <SectionHeader
+        eyebrow="Editorial collections"
+        title="Browse by mood"
+        action="Connect sources"
+        href="/connections"
+      />
+      <div className="grid gap-px border border-zinc-950 bg-zinc-950 md:grid-cols-2">
+        {collections.map((collection, index) => (
+          <article
+            key={collection.title}
+            className={`group min-h-80 p-5 text-zinc-950 transition duration-200 hover:opacity-95 sm:p-7 ${
+              collection.tone
+            } ${index === 0 ? "md:row-span-2" : ""}`}
+          >
+            <div className="flex h-full flex-col justify-between">
+              <p className="store-label">Collection {index + 1}</p>
+              <div>
+                <h3 className="max-w-xl text-5xl font-black uppercase leading-[0.9] tracking-[-0.06em] sm:text-6xl">
+                  {collection.title}
+                </h3>
+                <p className="mt-4 max-w-md text-base font-semibold leading-7">
+                  {collection.detail}
+                </p>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AccountStrip({
+  currentUser,
+}: {
+  currentUser: { email: string } | null;
+}) {
+  return (
+    <section id="account-access" className="border border-zinc-950 bg-zinc-50 text-zinc-950">
+      <div className="grid gap-px bg-zinc-950 lg:grid-cols-[minmax(16rem,0.55fr)_minmax(0,1.45fr)]">
+        <div className="bg-zinc-50 p-5">
+          <p className="store-label text-zinc-500">Your account</p>
+          <h2 className="mt-2 text-3xl font-black uppercase tracking-tighter">
+            {currentUser ? "You are in" : "Sign in to save the rack"}
+          </h2>
+          <p className="mt-3 text-sm font-semibold text-zinc-600">
+            {currentUser
+              ? currentUser.email
+              : "Plan drops, connect supported sources, and track the rest manually."}
+          </p>
+          {currentUser ? (
+            <form action="/api/session/logout" method="post" className="mt-5">
+              <button type="submit" className={secondaryButtonClassName}>
+                Log out
+              </button>
+            </form>
+          ) : null}
+        </div>
+
+        {!currentUser ? (
+          <div className="grid gap-px bg-zinc-950 md:grid-cols-3">
+            <div className="bg-zinc-50 p-5">
+              <p className="store-label text-zinc-500">New here</p>
+              <div className="mt-4">
+                <AuthForm
+                  action="/api/session/signup"
+                  buttonLabel="Create account"
+                  idPrefix="signup"
+                />
+              </div>
+            </div>
+            <div className="bg-zinc-50 p-5">
+              <p className="store-label text-zinc-500">Returning</p>
+              <div className="mt-4">
+                <AuthForm
+                  action="/api/session/login"
+                  buttonLabel="Log in"
+                  idPrefix="login"
+                />
+              </div>
+            </div>
+            <div className="bg-zinc-50 p-5">
+              <p className="store-label text-zinc-500">Reset</p>
+              <form
+                action="/api/session/request-reset"
+                method="post"
+                className="mt-4 space-y-3"
+              >
+                <div>
+                  <label
+                    className="store-label text-[0.68rem] text-zinc-500"
+                    htmlFor="reset-request-email"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id="reset-request-email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className={fieldClassName}
+                    placeholder="you@example.com"
+                  />
+                </div>
+                <button type="submit" className={`w-full ${secondaryButtonClassName}`}>
+                  Send reset
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-zinc-50 p-5">
+            <p className="store-label text-zinc-500">Saved for later</p>
+            <p className="mt-3 max-w-xl text-lg font-semibold leading-7">
+              Your prototype queue and supported source connections stay tied to
+              this account.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StoreFooter() {
+  return (
+    <footer className="border border-zinc-950 bg-zinc-950 text-zinc-50">
+      <div className="grid gap-px bg-zinc-800 sm:grid-cols-2 lg:grid-cols-5">
+        {footerGroups.map((group) => (
+          <div key={group.title} className="bg-zinc-950 p-5">
+            <p className="store-label text-rose-200">{group.title}</p>
+            <ul className="mt-4 space-y-2">
+              {group.links.map((link) => (
+                <li key={link}>
+                  <a
+                    href={group.title === "Sources" ? "/connections" : "#preview-drops"}
+                    className="text-sm font-semibold text-zinc-300 transition hover:text-zinc-50"
+                  >
+                    {link}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </footer>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  action,
+  href,
+}: {
+  eyebrow: string;
+  title: string;
+  action: string;
+  href: string;
+}) {
+  return (
+    <div className="mb-4 flex items-end justify-between gap-4">
+      <div>
+        <p className="store-label text-zinc-500">{eyebrow}</p>
+        <h2 className="mt-1 text-4xl font-black uppercase leading-none tracking-[-0.06em] text-zinc-950 sm:text-5xl">
+          {title}
+        </h2>
+      </div>
+      <Link
+        href={href}
+        className="hidden border border-zinc-950 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-zinc-950 transition hover:bg-zinc-950 hover:text-zinc-50 sm:inline-flex"
+      >
+        {action}
+      </Link>
+    </div>
+  );
+}
+
+export function SourceMarketplace({
+  currentUser,
+  services,
+  initialStatuses,
+  showHeader = true,
+}: SourceMarketplaceProps) {
+  const connectedCount = services.filter((service) => initialStatuses[service.id]).length;
+
+  return (
+    <section className="store-section">
+      {showHeader ? (
+        <div className="mb-4 grid gap-4 border border-zinc-950 bg-zinc-50 p-5 text-zinc-950 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="store-label text-zinc-500">Source marketplace</p>
+            <h1 className="mt-2 text-5xl font-black uppercase leading-none tracking-[-0.07em] sm:text-6xl">
+              Choose future sources for your prototype feed.
+            </h1>
+          </div>
+          <div className="self-end border border-zinc-950 px-4 py-3 text-sm font-black uppercase tracking-[0.14em]">
+            {connectedCount}/{services.length} active
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        {["Streaming", "Music", "Video", "Live", "Events", "Sports", "Manual"].map(
+          (category) => (
+            <span
+              key={category}
+              className="shrink-0 border border-zinc-950 bg-zinc-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-zinc-950"
+            >
+              {category}
+            </span>
+          ),
+        )}
+      </div>
+
+      <div className="grid gap-px border border-zinc-950 bg-zinc-950 md:grid-cols-3">
+        {services.map((service, index) => {
+          const connected = Boolean(initialStatuses[service.id]);
+          const isAuthenticated = Boolean(currentUser);
+          const ready = service.configured && isAuthenticated;
+          const status = serviceStatus(service, currentUser, initialStatuses);
+          const merch = providerMerch[service.id];
+
+          return (
+            <article
+              key={service.id}
+              className={`group bg-zinc-50 text-zinc-950 ${
+                index === 0 ? "md:col-span-2" : ""
+              }`}
+            >
+              <div className={`min-h-52 p-5 ${merch.accent}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="store-label opacity-70">
+                      {providerCategory[service.id]}
+                    </p>
+                    <h2 className="mt-2 text-5xl font-black uppercase leading-none tracking-[-0.07em]">
+                      {service.name}
+                    </h2>
+                  </div>
+                  <span className="border border-zinc-950 bg-zinc-50 px-2 py-1 text-[0.64rem] font-black uppercase tracking-[0.14em]">
+                    {status}
+                  </span>
+                </div>
+                <p className="mt-8 max-w-sm text-lg font-black uppercase leading-tight tracking-tighter">
+                  {merch.headline}
+                </p>
+              </div>
+              <div className="border-t border-zinc-950 p-5">
+                <p className="text-sm font-semibold leading-6 text-zinc-700">
+                  {merch.detail}
+                </p>
+                <p className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-zinc-500">
+                  Source state: {connected ? "Connected" : merch.available}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {connected ? (
+                    <>
+                      <form
+                        action={`/api/connections/${service.id}`}
+                        method="post"
+                        className="contents"
+                      >
+                        <button type="submit" className={secondaryButtonClassName}>
+                          Disconnect
+                        </button>
+                      </form>
+                      <a
+                        href={`/api/auth/${service.id}/start`}
+                        className={primaryButtonClassName}
+                      >
+                        Reconnect
+                      </a>
+                    </>
+                  ) : !isAuthenticated ? (
+                    <Link href="/#account-access" className={secondaryButtonClassName}>
+                      Sign in first
+                    </Link>
+                  ) : !service.configured ? (
+                    <span
+                      className={`${secondaryButtonClassName} cursor-not-allowed opacity-60`}
+                      aria-disabled="true"
+                    >
+                      Add keys
+                    </span>
+                  ) : (
+                    <a
+                      href={`/api/auth/${service.id}/start`}
+                      className={ready ? primaryButtonClassName : secondaryButtonClassName}
+                    >
+                      Connect
+                    </a>
+                  )}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+export function ConnectionControls(props: SourceMarketplaceProps) {
+  return <SourceMarketplace {...props} />;
+}
+
+export function AttentionSourcesPanel({
+  attentionSources,
+}: AttentionSourcesPanelProps) {
+  const featured = attentionSources.slice(0, 4);
+  const rest = attentionSources.slice(4);
+
+  return (
+    <section className="store-section">
+      <SectionHeader
+        eyebrow="More source racks"
+        title="Browse every feed type"
+        action="Back to top"
+        href="/connections"
+      />
+
+      <div className="grid gap-px border border-zinc-950 bg-zinc-950 lg:grid-cols-4">
+        {featured.map((source) => (
+          <SourceCard key={source.id} source={source} featured />
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-px border border-zinc-950 bg-zinc-950 sm:grid-cols-2 xl:grid-cols-3">
+        {rest.map((source) => (
+          <SourceCard key={source.id} source={source} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SourceCard({
+  source,
+  featured = false,
+}: {
+  source: AttentionSource;
+  featured?: boolean;
+}) {
+  return (
+    <article className={`bg-zinc-50 p-5 text-zinc-950 ${featured ? "min-h-72" : ""}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="store-label text-zinc-500">{source.category}</p>
+          <h3 className="mt-2 text-2xl font-black uppercase leading-none tracking-tighter">
+            {source.name}
+          </h3>
+        </div>
+        <span
+          className={`px-2 py-1 text-[0.64rem] font-black uppercase tracking-[0.14em] ${sourceStatusClass(
+            source.status,
+          )}`}
+        >
+          {source.statusLabel}
+        </span>
+      </div>
+      <p className="mt-6 text-sm font-semibold leading-6 text-zinc-700">
+        {source.summary}
+      </p>
+      {source.envVars.length > 0 ? (
+        <p className="mt-5 text-[0.68rem] font-black uppercase tracking-[0.14em] text-zinc-500">
+          {source.envVars.join(" / ")}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
 export function ConnectedApps({
   currentUser,
   services,
-  attentionSources,
   initialStatuses,
   pageError,
   authError,
@@ -187,10 +1022,6 @@ export function ConnectedApps({
   youtubeHighlights,
   twitchTopStreams,
 }: ConnectedAppsProps) {
-  const availableArtists = spotifyTopArtists.artists.slice(0, 5);
-  const availableVideos = youtubeHighlights.videos.slice(0, 6);
-  const availableChannels = youtubeHighlights.channels.slice(0, 6);
-  const availableStreams = twitchTopStreams.streams.slice(0, 6);
   const pageMessage =
     pageError === "connect" ? "The last connection attempt failed." : null;
   const authMessage = authError ? authErrorMessages[authError] ?? authError : null;
@@ -202,539 +1033,71 @@ export function ConnectedApps({
         ? `${providerName} connected.`
         : "Connection saved."
       : notice === "provider_disconnected"
-      ? providerName
-        ? `${providerName} disconnected.`
-        : "Connection removed."
-      : notice
-        ? noticeMessages[notice] ?? null
-        : null;
+        ? providerName
+          ? `${providerName} disconnected.`
+          : "Connection removed."
+        : notice
+          ? noticeMessages[notice] ?? null
+          : null;
   const developmentResetUrl =
     notice === "reset_requested" && resetToken
       ? `/reset-password?token=${encodeURIComponent(resetToken)}`
       : null;
   const activeMessage = authMessage ?? pageMessage;
-  const connectedCount = services.filter((service) => initialStatuses[service.id]).length;
-  const readySourceCount = attentionSources.filter((source) =>
-    source.status === "connected" || source.status === "ready",
-  ).length;
+  const leadVideo = youtubeHighlights.videos[0];
+  const leadArtist = spotifyTopArtists.artists[0];
+  const leadStream = twitchTopStreams.streams[0];
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-10">
-      <section className="surface surface-light fade-in rounded-[2rem] px-5 py-6 sm:px-7">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="display-title text-4xl text-slate-950 sm:text-5xl">
-            PopHub
-          </h1>
-          <div className="rounded-full border border-slate-200 bg-white/75 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-700">
-            {currentUser ? currentUser.email : "Signed out"}
-          </div>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {activeMessage ? (
-            <MessageBanner tone="warning">{activeMessage}</MessageBanner>
-          ) : null}
-
-          {noticeMessage ? (
-            <MessageBanner tone="success">{noticeMessage}</MessageBanner>
-          ) : null}
-
-          {developmentResetUrl ? (
-            <MessageBanner tone="info">
-              Development reset link:{" "}
-              <a
-                href={developmentResetUrl}
-                className="font-semibold underline underline-offset-2"
-              >
-                open reset screen
-              </a>
-            </MessageBanner>
-          ) : null}
-        </div>
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <section
-          id="account-access"
-          className="surface surface-ivory rounded-[2rem] p-5 sm:p-6"
-        >
-          <p className="section-label text-slate-500">Login</p>
-
-          {currentUser ? (
-            <div className="mt-4 space-y-4">
-              <div className="rounded-[1.4rem] border border-slate-200 bg-white/75 p-4">
-                <p className="text-sm text-slate-500">Current account</p>
-                <p className="mt-2 text-base font-semibold text-slate-950">
-                  {currentUser.email}
-                </p>
-              </div>
-
-              <form action="/api/session/logout" method="post">
-                <button type="submit" className={secondaryButtonClassName}>
-                  Log out
-                </button>
-              </form>
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-4">
-              <section className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4">
-                <p className="section-label text-slate-500">Sign up</p>
-                <div className="mt-4">
-                  <AuthForm
-                    action="/api/session/signup"
-                    buttonLabel="Create account"
-                    idPrefix="signup"
-                  />
-                </div>
-              </section>
-
-              <section className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4">
-                <p className="section-label text-slate-500">Log in</p>
-                <div className="mt-4">
-                  <AuthForm
-                    action="/api/session/login"
-                    buttonLabel="Log in"
-                    idPrefix="login"
-                  />
-                </div>
-              </section>
-
-              <section className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4">
-                <p className="section-label text-slate-500">Password reset</p>
-                <div className="mt-4">
-                  <form
-                    action="/api/session/request-reset"
-                    method="post"
-                    className="space-y-3"
-                  >
-                    <div>
-                      <label
-                        className="section-label text-[0.67rem] text-slate-500"
-                        htmlFor="reset-request-email"
-                      >
-                        Email
-                      </label>
-                      <input
-                        id="reset-request-email"
-                        name="email"
-                        type="email"
-                        required
-                        autoComplete="email"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        className={fieldClassName}
-                        placeholder="you@example.com"
-                      />
-                    </div>
-                    <button type="submit" className={`w-full ${secondaryButtonClassName}`}>
-                      Send reset link
-                    </button>
-                  </form>
-                </div>
-              </section>
-            </div>
-          )}
-        </section>
-
-        <section className="surface surface-light rounded-[2rem] p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="section-label text-slate-500">Connections</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                Connect accounts
-              </h2>
-            </div>
-            <div className="rounded-full border border-slate-200 bg-white/75 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-700">
-              {connectedCount}/{services.length} connected
-            </div>
-          </div>
-
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {services.map((service) => {
-              const isConnected = Boolean(initialStatuses[service.id]);
-              const isAuthenticated = Boolean(currentUser);
-              const canConnect = service.configured && isAuthenticated;
-              const statusLabel = isConnected
-                ? "Connected"
-                : !service.configured
-                  ? "Missing keys"
-                  : isAuthenticated
-                    ? "Ready"
-                    : "Sign in";
-
-              return (
-                <li
-                  key={service.id}
-                  className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-semibold text-slate-950">
-                        {service.name}
-                      </p>
-                      <p className="mt-2 text-sm text-slate-500">
-                        {providerNotes[service.id]}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full border px-3 py-1 text-[0.66rem] font-semibold uppercase tracking-[0.16em] ${
-                        isConnected
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          : canConnect
-                            ? "border-amber-200 bg-amber-50 text-amber-800"
-                            : "border-slate-200 bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {statusLabel}
-                    </span>
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {isConnected ? (
-                      <>
-                        <form
-                          action={`/api/connections/${service.id}`}
-                          method="post"
-                          className="contents"
-                        >
-                          <button
-                            type="submit"
-                            className="rounded-full border border-rose-200 bg-rose-50 px-4 py-3 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-rose-700 transition hover:-translate-y-px hover:bg-rose-100"
-                          >
-                            Disconnect
-                          </button>
-                        </form>
-                        <a
-                          href={`/api/auth/${service.id}/start`}
-                          className={secondaryButtonClassName}
-                        >
-                          Reconnect
-                        </a>
-                      </>
-                    ) : !isAuthenticated ? (
-                      <a href="#account-access" className={secondaryButtonClassName}>
-                        Sign in to connect
-                      </a>
-                    ) : !service.configured ? (
-                      <span
-                        className={`${secondaryButtonClassName} cursor-not-allowed opacity-70`}
-                        aria-disabled="true"
-                      >
-                        Missing OAuth keys
-                      </span>
-                    ) : (
-                      <a
-                        href={`/api/auth/${service.id}/start`}
-                        className={canConnect ? primaryButtonClassName : secondaryButtonClassName}
-                      >
-                        Connect
-                      </a>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-10">
+      <div className="space-y-2">
+        {activeMessage ? (
+          <MessageBanner tone="warning">{activeMessage}</MessageBanner>
+        ) : null}
+        {noticeMessage ? (
+          <MessageBanner tone="success">{noticeMessage}</MessageBanner>
+        ) : null}
+        {developmentResetUrl ? (
+          <MessageBanner tone="info">
+            Development reset link:{" "}
+            <a
+              href={developmentResetUrl}
+              className="font-black underline underline-offset-2"
+            >
+              open reset screen
+            </a>
+          </MessageBanner>
+        ) : null}
       </div>
 
-      <section className="surface surface-light rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="section-label text-slate-500">Attention layer</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-              Sources
-            </h2>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white/75 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-700">
-            {readySourceCount}/{attentionSources.length} active
-          </div>
-        </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {categoryTabs.map((category) => (
+          <a
+            key={category}
+            href={category === "Sources" ? "/connections" : "#preview-drops"}
+            className="shrink-0 border border-zinc-950 bg-zinc-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-zinc-950 transition hover:bg-rose-300"
+          >
+            {category}
+          </a>
+        ))}
+      </div>
 
-        <ul className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {attentionSources.map((source) => (
-            <li
-              key={source.id}
-              className="rounded-[1.5rem] border border-slate-200 bg-white/75 p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-base font-semibold text-slate-950">
-                    {source.name}
-                  </p>
-                  <p className="mt-1 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    {source.category}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full border px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] ${sourceStatusClass(
-                    source.status,
-                  )}`}
-                >
-                  {source.statusLabel}
-                </span>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-slate-600">
-                {source.summary}
-              </p>
-              {source.envVars.length > 0 ? (
-                <p className="mt-4 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  {source.envVars.join(" / ")}
-                </p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <CampaignHero
+        leadVideo={leadVideo}
+        leadArtist={leadArtist}
+        leadStream={leadStream}
+      />
 
-      <section className="surface surface-dark rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="section-label text-slate-300">Top artists</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
-              Spotify
-            </h2>
-          </div>
-          <div className="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-200">
-            {initialStatuses.spotify ? "Connected" : "Not connected"}
-          </div>
-        </div>
+      <DropGrid
+        spotifyTopArtists={spotifyTopArtists}
+        youtubeHighlights={youtubeHighlights}
+        twitchTopStreams={twitchTopStreams}
+      />
 
-        {initialStatuses.spotify ? (
-          spotifyTopArtists.error ? (
-            <div className="mt-6 rounded-[1.4rem] border border-rose-300/25 bg-rose-300/10 px-5 py-5 text-sm leading-6 text-rose-50">
-              <p>{spotifyTopArtists.error}</p>
-              <div className="mt-4">
-                <a href="/api/auth/spotify/start" className={darkGhostButtonClassName}>
-                  Reconnect Spotify
-                </a>
-              </div>
-            </div>
-          ) : availableArtists.length > 0 ? (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              {availableArtists.map((artist) => (
-                <a
-                  key={artist.id}
-                  href={artist.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] transition hover:-translate-y-1 hover:border-white/20"
-                >
-                  {artist.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={artist.imageUrl}
-                      alt={artist.name}
-                      className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <div className="aspect-square w-full bg-slate-800" />
-                  )}
-                  <div className="px-4 py-4">
-                    <p className="text-base font-semibold text-white">{artist.name}</p>
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-[1.4rem] border border-white/12 bg-white/[0.04] px-5 py-6 text-sm text-slate-200">
-              No top artists found yet.
-            </div>
-          )
-        ) : (
-          <div className="mt-6 rounded-[1.4rem] border border-dashed border-white/14 bg-white/[0.04] px-5 py-6 text-sm text-slate-200">
-            {currentUser
-              ? "Connect Spotify to load top artists."
-              : "Log in, then connect Spotify to load top artists."}
-          </div>
-        )}
-      </section>
-
-      <section className="surface surface-light rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="section-label text-slate-500">From subscriptions</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-              YouTube
-            </h2>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white/75 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-700">
-            {initialStatuses.youtube ? "Connected" : "Not connected"}
-          </div>
-        </div>
-
-        {initialStatuses.youtube ? (
-          youtubeHighlights.error ? (
-            <div className="mt-6 rounded-[1.4rem] border border-amber-200/70 bg-amber-50/80 px-5 py-5 text-sm leading-6 text-amber-950">
-              <p>{youtubeHighlights.error}</p>
-              <div className="mt-4">
-                <a href="/api/auth/youtube/start" className={secondaryButtonClassName}>
-                  Reconnect YouTube
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-              <div>
-                <p className="section-label text-slate-500">Recent uploads</p>
-                {availableVideos.length > 0 ? (
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {availableVideos.map((video) => (
-                      <a
-                        key={video.id}
-                        href={video.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="group overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white transition hover:-translate-y-1 hover:border-slate-300"
-                      >
-                        {video.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={video.imageUrl}
-                            alt={video.title}
-                            className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                          />
-                        ) : (
-                          <div className="aspect-video w-full bg-slate-100" />
-                        )}
-                        <div className="space-y-2 px-4 py-4">
-                          <p className="line-clamp-2 text-sm font-semibold text-slate-950">
-                            {video.title}
-                          </p>
-                          <p className="text-sm text-slate-500">{video.channelTitle}</p>
-                          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            {formatCount(video.viewCount, "views")}
-                          </p>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-white/75 px-5 py-6 text-sm text-slate-600">
-                    No recent uploads were returned yet.
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <p className="section-label text-slate-500">Subscribed channels</p>
-                {availableChannels.length > 0 ? (
-                  <div className="mt-4 grid gap-3">
-                    {availableChannels.map((channel) => (
-                      <a
-                        key={channel.id}
-                        href={channel.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-4 rounded-[1.3rem] border border-slate-200 bg-white px-4 py-4 transition hover:-translate-y-px hover:border-slate-300"
-                      >
-                        {channel.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={channel.imageUrl}
-                            alt={channel.title}
-                            className="h-14 w-14 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-14 w-14 rounded-full bg-slate-100" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-semibold text-slate-950">
-                            {channel.title}
-                          </p>
-                          <p className="mt-1 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            {formatCount(channel.subscriberCount, "subscribers")}
-                          </p>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-white/75 px-5 py-6 text-sm text-slate-600">
-                    No subscribed channels were returned yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        ) : (
-          <div className="mt-6 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-5 py-6 text-sm text-slate-600">
-            {currentUser
-              ? "Connect YouTube to load subscribed channels and recent uploads."
-              : "Log in, then connect YouTube to load subscribed channels and recent uploads."}
-          </div>
-        )}
-      </section>
-
-      <section className="surface surface-dark rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="section-label text-slate-300">Followed live now</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
-              Twitch
-            </h2>
-          </div>
-          <div className="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-200">
-            {initialStatuses.twitch ? "Connected" : "Not connected"}
-          </div>
-        </div>
-
-        {initialStatuses.twitch ? (
-          twitchTopStreams.error ? (
-            <div className="mt-6 rounded-[1.4rem] border border-rose-300/25 bg-rose-300/10 px-5 py-5 text-sm leading-6 text-rose-50">
-              <p>{twitchTopStreams.error}</p>
-              <div className="mt-4">
-                <a href="/api/auth/twitch/start" className={darkGhostButtonClassName}>
-                  Reconnect Twitch
-                </a>
-              </div>
-            </div>
-          ) : availableStreams.length > 0 ? (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {availableStreams.map((stream) => (
-                <a
-                  key={stream.id}
-                  href={stream.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] transition hover:-translate-y-1 hover:border-white/20"
-                >
-                  {stream.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={stream.imageUrl}
-                      alt={stream.broadcasterName}
-                      className="aspect-video w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <div className="aspect-video w-full bg-slate-800" />
-                  )}
-                  <div className="space-y-2 px-4 py-4">
-                    <p className="text-base font-semibold text-white">
-                      {stream.broadcasterName}
-                    </p>
-                    <p className="line-clamp-2 text-sm text-slate-200">{stream.title}</p>
-                    <p className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      {formatCount(stream.viewerCount, "viewers")}
-                      {stream.gameName ? ` • ${stream.gameName}` : ""}
-                    </p>
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-[1.4rem] border border-dashed border-white/14 bg-white/[0.04] px-5 py-6 text-sm text-slate-200">
-              No Twitch streams found right now.
-            </div>
-          )
-        ) : (
-          <div className="mt-6 rounded-[1.4rem] border border-dashed border-white/14 bg-white/[0.04] px-5 py-6 text-sm text-slate-200">
-            {currentUser
-              ? "Connect Twitch to load followed live streamers."
-              : "Log in, then connect Twitch to load followed live streamers."}
-          </div>
-        )}
-      </section>
+      <SourceRail services={services} initialStatuses={initialStatuses} />
+      <EditorialCollections />
+      <AccountStrip currentUser={currentUser} />
+      <StoreFooter />
     </div>
   );
 }

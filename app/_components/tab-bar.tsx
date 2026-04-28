@@ -1,12 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-const tabs = [
-  { href: "/", label: "Discover" },
-  { href: "/connections", label: "Sources" },
-];
 
 const categories = [
   "Watch",
@@ -18,17 +10,7 @@ const categories = [
   "For You",
 ];
 
-function isActiveTab(pathname: string, href: string) {
-  if (href === "/") {
-    return pathname === href;
-  }
-
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
 export function TabBar() {
-  const pathname = usePathname();
-
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-950 bg-zinc-50 text-zinc-950">
       <div className="bg-zinc-950 px-4 py-2 text-center text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-50">
@@ -55,26 +37,12 @@ export function TabBar() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 bg-zinc-950">
-            {tabs.map((tab) => {
-              const isActive = isActiveTab(pathname, tab.href);
-
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`flex min-h-16 items-center justify-center bg-zinc-50 px-5 text-xs font-black uppercase tracking-[0.16em] transition ${
-                    isActive
-                      ? "bg-rose-300 text-zinc-950"
-                      : "hover:bg-zinc-200"
-                  }`}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </div>
+          <Link
+            href="/connections"
+            className="flex min-h-16 items-center justify-center bg-rose-300 px-5 text-xs font-black uppercase tracking-[0.16em] text-zinc-950 transition hover:bg-amber-300"
+          >
+            Source marketplace
+          </Link>
         </div>
       </nav>
 

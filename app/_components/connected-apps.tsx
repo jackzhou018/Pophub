@@ -353,110 +353,18 @@ function ProductVisual({
   );
 }
 
-function CampaignHero({
-  leadVideo,
-  leadArtist,
-  leadStream,
-}: {
-  leadVideo: YoutubeHighlightsResult["videos"][number] | undefined;
-  leadArtist: SpotifyTopArtistsResult["artists"][number] | undefined;
-  leadStream: TwitchTopStreamsResult["streams"][number] | undefined;
-}) {
-  return (
-    <section className="store-campaign grid overflow-hidden border border-zinc-950 bg-zinc-100 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
-      <div className="flex min-h-[34rem] flex-col justify-between bg-zinc-950 p-5 text-zinc-50 sm:p-8 lg:p-10">
-        <div>
-          <p className="store-label text-rose-200">Prototype discovery feed</p>
-          <h1 className="mt-5 max-w-4xl text-6xl font-black uppercase leading-[0.86] tracking-[-0.08em] sm:text-7xl lg:text-8xl">
-            Plan your entertainment queue.
-          </h1>
-        </div>
-        <div className="mt-8 grid gap-3 sm:grid-cols-[auto_auto_1fr]">
-          <Link href="#preview-drops" className={primaryButtonClassName}>
-            Preview drops
-          </Link>
-          <Link href="/connections" className={secondaryButtonClassName}>
-            Connect sources
-          </Link>
-          <p className="max-w-md text-sm leading-6 text-zinc-400 sm:pl-3">
-            Preview creator uploads, music releases, live streams, and event
-            reminders. Connect supported sources or track the rest manually.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid min-h-[34rem] grid-rows-[1fr_auto] bg-zinc-50">
-        <div className="grid grid-cols-2">
-          <FeaturePoster
-            label="Watch"
-            title={leadVideo?.title ?? "Creator upload preview"}
-            meta={leadVideo?.channelTitle ?? "YouTube source preview"}
-            imageUrl={leadVideo?.imageUrl}
-            href={leadVideo?.url}
-            tone="bg-rose-300"
-          />
-          <FeaturePoster
-            label="Listen"
-            title={leadArtist?.name ?? "Artist rack preview"}
-            meta="Spotify source preview"
-            imageUrl={leadArtist?.imageUrl}
-            href={leadArtist?.url}
-            tone="bg-emerald-300"
-          />
-        </div>
-        <div className="border-t border-zinc-950 bg-amber-300 p-5 text-zinc-950">
-          <p className="store-label">Live source preview</p>
-          <p className="mt-2 text-xl font-black uppercase leading-tight tracking-tighter">
-            {leadStream?.broadcasterName ?? "Twitch source"}
-          </p>
-          <p className="mt-1 line-clamp-2 text-sm font-semibold">
-            {leadStream?.title ??
-              "This preview rack stays empty until a supported source returns live data."}
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FeaturePoster({
-  label,
-  title,
-  meta,
-  imageUrl,
-  href,
-  tone,
-}: {
+type TopicItem = {
+  id: string;
   label: string;
   title: string;
+  source: string;
   meta: string;
   imageUrl?: string | null;
   href?: string;
   tone: string;
-}) {
-  const poster = (
-    <article className="group relative min-h-full border-l border-zinc-950">
-      <ProductVisual imageUrl={imageUrl} tone={tone} title={title} />
-      <div className="border-t border-zinc-950 bg-zinc-50 p-4 text-zinc-950">
-        <p className="store-label text-zinc-500">{label}</p>
-        <h2 className="mt-2 line-clamp-2 text-xl font-black uppercase leading-none tracking-tighter">
-          {title}
-        </h2>
-        <p className="mt-2 truncate text-sm font-semibold text-zinc-600">{meta}</p>
-      </div>
-    </article>
-  );
+};
 
-  return href ? (
-    <a href={href} target="_blank" rel="noreferrer">
-      {poster}
-    </a>
-  ) : (
-    poster
-  );
-}
-
-function DropGrid({
+function TopicColumns({
   spotifyTopArtists,
   youtubeHighlights,
   twitchTopStreams,
@@ -465,103 +373,263 @@ function DropGrid({
   youtubeHighlights: YoutubeHighlightsResult;
   twitchTopStreams: TwitchTopStreamsResult;
 }) {
-  const dynamicDrops = [
-    ...youtubeHighlights.videos.slice(0, 4).map((video) => ({
-      id: `video-${video.id}`,
-      label: "Connected source",
-      title: video.title,
-      source: video.channelTitle,
-      meta: formatCount(video.viewCount, "views"),
-      imageUrl: video.imageUrl,
-      href: video.url,
-      tone: "bg-rose-300",
-    })),
-    ...spotifyTopArtists.artists.slice(0, 4).map((artist) => ({
-      id: `artist-${artist.id}`,
-      label: "Connected source",
-      title: artist.name,
-      source: "Spotify",
-      meta: "Listen next",
-      imageUrl: artist.imageUrl,
-      href: artist.url,
-      tone: "bg-emerald-300",
-    })),
-    ...twitchTopStreams.streams.slice(0, 3).map((stream) => ({
-      id: `stream-${stream.id}`,
-      label: "Connected source",
-      title: stream.broadcasterName,
-      source: stream.gameName ?? "Twitch",
-      meta: formatCount(stream.viewerCount, "viewers"),
-      imageUrl: stream.imageUrl,
-      href: stream.url,
-      tone: "bg-violet-300",
-    })),
+  const artistItems = spotifyTopArtists.artists.slice(0, 4).map((artist) => ({
+    id: `artist-${artist.id}`,
+    label: "Connected source",
+    title: artist.name,
+    source: "Spotify",
+    meta: "Music preview",
+    imageUrl: artist.imageUrl,
+    href: artist.url,
+    tone: "bg-emerald-300",
+  }));
+  const videoItems = youtubeHighlights.videos.slice(0, 4).map((video) => ({
+    id: `video-${video.id}`,
+    label: "Connected source",
+    title: video.title,
+    source: video.channelTitle,
+    meta: formatCount(video.viewCount, "views"),
+    imageUrl: video.imageUrl,
+    href: video.url,
+    tone: "bg-rose-300",
+  }));
+  const liveItems = twitchTopStreams.streams.slice(0, 3).map((stream) => ({
+    id: `stream-${stream.id}`,
+    label: "Connected source",
+    title: stream.broadcasterName,
+    source: stream.gameName ?? "Twitch",
+    meta: formatCount(stream.viewerCount, "viewers"),
+    imageUrl: stream.imageUrl,
+    href: stream.url,
+    tone: "bg-violet-300",
+  }));
+  const musicFallback: TopicItem = {
+    id: "music-fallback",
+    label: "Coming soon",
+    title: "Music release planner",
+    source: "Connect Spotify",
+    meta: "Prototype",
+    tone: "bg-emerald-300",
+  };
+  const youtubeFallback: TopicItem = {
+    id: "youtube-fallback",
+    label: "Coming soon",
+    title: "Creator upload planner",
+    source: "Connect YouTube",
+    meta: "Prototype",
+    tone: "bg-rose-300",
+  };
+  const liveFallback: TopicItem = {
+    id: "live-fallback",
+    label: "Coming soon",
+    title: "Live and event planner",
+    source: "Connect Twitch",
+    meta: "Manual reminders",
+    tone: "bg-violet-300",
+  };
+  const streamingHeadliner: TopicItem = {
+    ...staticDrops[0],
+    imageUrl: null,
+    href: undefined,
+  };
+  const columns = [
+    {
+      id: "music",
+      title: "Music",
+      eyebrow: "Listen column",
+      headliner: artistItems[0] ?? musicFallback,
+      items:
+        artistItems.length > 1
+          ? artistItems.slice(1)
+          : [
+              {
+                id: "music-release",
+                label: "Manual tracker",
+                title: "Album release watchlist",
+                source: "Music",
+                meta: "Preview",
+                tone: "bg-emerald-200",
+              },
+              {
+                id: "podcast-planner",
+                label: "Coming soon",
+                title: "Podcast queue planning",
+                source: "Audio",
+                meta: "Prototype",
+                tone: "bg-lime-300",
+              },
+            ],
+    },
+    {
+      id: "streaming",
+      title: "Streaming",
+      eyebrow: "Watch column",
+      headliner: streamingHeadliner,
+      items: staticDrops.slice(1).map((drop) => ({
+        ...drop,
+        imageUrl: null,
+        href: undefined,
+      })),
+    },
+    {
+      id: "youtube",
+      title: "YouTube",
+      eyebrow: "Creator column",
+      headliner: videoItems[0] ?? youtubeFallback,
+      items:
+        videoItems.length > 1
+          ? videoItems.slice(1)
+          : [
+              {
+                id: "creator-subscriptions",
+                label: "Coming soon",
+                title: "Subscribed channel rack",
+                source: "YouTube",
+                meta: "Connect source",
+                tone: "bg-rose-200",
+              },
+              {
+                id: "trailer-planning",
+                label: "Preview",
+                title: "Trailer watchlist",
+                source: "Video",
+                meta: "Manual queue",
+                tone: "bg-orange-300",
+              },
+            ],
+    },
+    {
+      id: "live-events",
+      title: "Live & Events",
+      eyebrow: "Going out column",
+      headliner: liveItems[0] ?? liveFallback,
+      items:
+        liveItems.length > 1
+          ? liveItems.slice(1)
+          : [
+              {
+                id: "concert-planning",
+                label: "Preview",
+                title: "Concert reminder rack",
+                source: "Events",
+                meta: "Manual planning",
+                tone: "bg-amber-300",
+              },
+              {
+                id: "sports-planning",
+                label: "Coming soon",
+                title: "Sports event watchlist",
+                source: "Sports",
+                meta: "Future source",
+                tone: "bg-cyan-200",
+              },
+            ],
+    },
   ];
-  const drops = [
-    ...dynamicDrops,
-    ...staticDrops.map((drop) => ({
-      ...drop,
-      imageUrl: null,
-      href: undefined,
-    })),
-  ].slice(0, 12);
 
   return (
     <section id="preview-drops" className="store-section">
-      <SectionHeader
-        eyebrow="Prototype discovery feed"
-        title="Preview drops"
-        action="Connect sources"
-        href="/connections"
-      />
-      <div className="grid grid-cols-2 gap-px border border-zinc-950 bg-zinc-950 md:grid-cols-3 xl:grid-cols-4">
-        {drops.map((drop) => (
-          <DropCard key={drop.id} {...drop} />
+      <div className="mb-4 grid gap-4 border border-zinc-950 bg-zinc-50 p-5 text-zinc-950 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.45fr)]">
+        <div>
+          <p className="store-label text-zinc-500">Prototype discovery feed</p>
+          <h1 className="mt-2 text-5xl font-black uppercase leading-[0.9] tracking-[-0.07em] sm:text-6xl lg:text-7xl">
+            One headliner per column.
+          </h1>
+        </div>
+        <p className="self-end text-sm font-semibold leading-6 text-zinc-600">
+          Each topic gets its own vertical rack. The top card is the headlining
+          thing for that column; the rest are queue items or source previews.
+        </p>
+      </div>
+
+      <div className="grid gap-px border border-zinc-950 bg-zinc-950 md:grid-cols-2 xl:grid-cols-4">
+        {columns.map((column) => (
+          <TopicColumn key={column.id} {...column} />
         ))}
       </div>
     </section>
   );
 }
 
-function DropCard({
-  label,
+function TopicColumn({
+  eyebrow,
   title,
-  source,
-  meta,
-  imageUrl,
-  href,
-  tone,
+  headliner,
+  items,
 }: {
-  label: string;
+  eyebrow: string;
   title: string;
-  source: string;
-  meta: string;
-  imageUrl?: string | null;
-  href?: string;
-  tone: string;
+  headliner: TopicItem;
+  items: TopicItem[];
 }) {
-  const card = (
-    <article className="group bg-zinc-50 text-zinc-950">
-      <ProductVisual imageUrl={imageUrl} tone={tone} title={title} />
-      <div className="min-h-36 border-t border-zinc-950 p-4">
-        <p className="store-label text-zinc-500">{label}</p>
-        <h3 className="mt-2 line-clamp-2 text-lg font-black uppercase leading-none tracking-tighter">
+  return (
+    <article className="bg-zinc-50 text-zinc-950">
+      <div className="border-b border-zinc-950 p-4">
+        <p className="store-label text-zinc-500">{eyebrow}</p>
+        <h2 className="mt-1 text-4xl font-black uppercase leading-none tracking-[-0.06em]">
           {title}
+        </h2>
+      </div>
+
+      <TopicHeadliner item={headliner} />
+
+      <div className="grid gap-px bg-zinc-950">
+        {items.map((item) => (
+          <TopicQueueItem key={item.id} item={item} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function TopicHeadliner({ item }: { item: TopicItem }) {
+  const content = (
+    <article className="group">
+      <ProductVisual imageUrl={item.imageUrl} tone={item.tone} title={item.title} />
+      <div className="border-t border-zinc-950 bg-zinc-50 p-4">
+        <p className="store-label text-zinc-500">{item.label}</p>
+        <h3 className="mt-2 text-3xl font-black uppercase leading-none tracking-[-0.055em]">
+          {item.title}
         </h3>
         <div className="mt-4 flex items-center justify-between gap-3 text-sm font-semibold">
-          <span className="truncate">{source}</span>
-          <span className="shrink-0 text-zinc-500">{meta}</span>
+          <span className="truncate">{item.source}</span>
+          <span className="shrink-0 text-zinc-500">{item.meta}</span>
         </div>
       </div>
     </article>
   );
 
-  return href ? (
-    <a href={href} target="_blank" rel="noreferrer">
-      {card}
+  return item.href ? (
+    <a href={item.href} target="_blank" rel="noreferrer">
+      {content}
     </a>
   ) : (
-    card
+    content
+  );
+}
+
+function TopicQueueItem({ item }: { item: TopicItem }) {
+  const content = (
+    <article className="group grid grid-cols-[4.5rem_minmax(0,1fr)] bg-zinc-50 transition duration-200 hover:bg-rose-100">
+      <div className={`${item.tone} min-h-24 border-r border-zinc-950`} />
+      <div className="p-3">
+        <p className="store-label text-zinc-500">{item.label}</p>
+        <h3 className="mt-2 line-clamp-2 text-base font-black uppercase leading-none tracking-tighter">
+          {item.title}
+        </h3>
+        <p className="mt-2 truncate text-sm font-semibold text-zinc-600">
+          {item.source} / {item.meta}
+        </p>
+      </div>
+    </article>
+  );
+
+  return item.href ? (
+    <a href={item.href} target="_blank" rel="noreferrer">
+      {content}
+    </a>
+  ) : (
+    content
   );
 }
 
@@ -1044,9 +1112,6 @@ export function ConnectedApps({
       ? `/reset-password?token=${encodeURIComponent(resetToken)}`
       : null;
   const activeMessage = authMessage ?? pageMessage;
-  const leadVideo = youtubeHighlights.videos[0];
-  const leadArtist = spotifyTopArtists.artists[0];
-  const leadStream = twitchTopStreams.streams[0];
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-10">
@@ -1082,13 +1147,7 @@ export function ConnectedApps({
         ))}
       </div>
 
-      <CampaignHero
-        leadVideo={leadVideo}
-        leadArtist={leadArtist}
-        leadStream={leadStream}
-      />
-
-      <DropGrid
+      <TopicColumns
         spotifyTopArtists={spotifyTopArtists}
         youtubeHighlights={youtubeHighlights}
         twitchTopStreams={twitchTopStreams}
